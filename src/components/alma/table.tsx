@@ -25,7 +25,7 @@ export function AlmaTable() {
   if (phase === "done") {
     return (
       <AlmaShell>
-        <div className="relative mt-6 flex w-full flex-1 flex-col items-center justify-center">
+        <div className="relative flex w-full flex-1 flex-col items-center justify-center">
           <Confetti />
           <SproutIcon className="size-16 text-[#4f8a3c]" />
           <h1 className="mt-6 text-[clamp(2rem,8vw,2.5rem)] font-extrabold">¡Gracias!</h1>
@@ -41,7 +41,7 @@ export function AlmaTable() {
     const Icon = ICONS[selected];
     return (
       <AlmaShell step={2}>
-        <div className="mt-8 flex w-full flex-1 flex-col items-center">
+        <div className="flex w-full flex-1 flex-col items-center justify-center">
           <div className="grid size-20 place-items-center rounded-2xl bg-white shadow-sm">
             <Icon className="size-14" />
           </div>
@@ -72,7 +72,7 @@ export function AlmaTable() {
         </button>
       }
     >
-      <div className="mt-8 flex w-full flex-1 flex-col items-center">
+      <div className="flex w-full flex-1 flex-col items-center justify-center">
         <h1 className="w-full text-[clamp(1.4rem,6vw,2rem)] leading-tight font-extrabold text-balance">
           Ahora vamos a la mesa de las herramientas.
         </h1>

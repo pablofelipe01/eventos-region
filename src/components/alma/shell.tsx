@@ -63,7 +63,7 @@ export function AlmaShell({
             <Progress step={step} />
           </div>
         )}
-        <div className="flex w-full min-w-0 flex-1 flex-col items-center">{children}</div>
+        <div className="flex w-full min-w-0 flex-1 flex-col items-center justify-center py-6">{children}</div>
         {bottom && (
           <div className="flex w-full min-w-0 justify-center pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-4 sm:pb-12">{bottom}</div>
         )}

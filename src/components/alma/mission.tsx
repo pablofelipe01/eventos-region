@@ -26,7 +26,7 @@ export function AlmaMission({ nextHref }: { nextHref: string }) {
           </Link>
         }
       >
-        <div className="relative mt-6 flex w-full flex-col items-center">
+        <div className="relative flex w-full flex-1 flex-col items-center justify-center">
           <Confetti />
           <Snack className="mt-10 h-32 w-auto" />
           <h1 className="mt-6 text-[clamp(2rem,8vw,2.5rem)] font-extrabold">¡Gracias!</h1>
@@ -53,7 +53,7 @@ export function AlmaMission({ nextHref }: { nextHref: string }) {
 
   return (
     <AlmaShell step={index + 1}>
-      <div className="mt-10 flex w-full flex-1 flex-col items-center">
+      <div className="flex w-full flex-1 flex-col items-center justify-center">
         <h1 className="w-full text-[clamp(1.5rem,6.5vw,2.25rem)] leading-tight font-extrabold text-balance">{question.title}</h1>
         {question.hint && <p className="mt-3 max-w-xs text-[15px] leading-snug text-[#2f4a3c] sm:max-w-sm sm:text-base">{question.hint}</p>}
         <div className="mt-10 w-full sm:mt-14">
