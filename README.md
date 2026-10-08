@@ -1,7 +1,7 @@
 # Región — asistente de IA
 
 **Región** es un asistente de IA conversacional, por texto y por voz, que ayuda a crear lo que necesites: documentos, código, pequeñas páginas web, imágenes e investigaciones con búsqueda web.
-
+##test 
 ## Qué hace
 
 - **Chat de texto en streaming** con selector de modelo (Claude u OpenAI). El proveedor por defecto se define con `DEFAULT_PROVIDER`. Los IDs de modelo están en un solo archivo: `src/lib/agent/config.ts`.
