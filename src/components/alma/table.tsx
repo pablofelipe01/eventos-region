@@ -23,8 +23,8 @@ export function AlmaTable() {
           <Confetti />
           <SproutIcon className="size-16 text-[#4f8a3c]" />
           <h1 className="mt-6 text-[clamp(2rem,8vw,2.5rem)] font-extrabold">¡Gracias!</h1>
-          <p className="mt-3 max-w-xs text-[#2f4a3c] sm:max-w-sm sm:text-lg">
-            Tu historia ya hace parte de la memoria de Las Moras. Puedes devolver el celular.
+          <p className="mt-4 max-w-sm text-[clamp(1.125rem,4.8vw,1.35rem)] leading-relaxed text-[#2f4a3c] sm:max-w-md">
+            Ahora ingresa y toma un asiento, que está próximo a empezar el taller.
           </p>
         </div>
       </AlmaShell>
@@ -52,7 +52,7 @@ export function AlmaTable() {
             <ObjectTable />
           </div>
         </div>
-        <p className="mt-6 max-w-sm text-[15px] leading-snug text-[#2f4a3c] sm:text-base">
+        <p className="mt-6 max-w-sm text-[clamp(1.05rem,4.4vw,1.2rem)] leading-snug text-[#2f4a3c] sm:max-w-md">
           <span className="font-bold">Cada herramienta tiene una historia.</span>
           <br />
           Observa los objetos que encontrarás sobre la mesa. Elige uno que te recuerde algo de tu vida y cuéntanos

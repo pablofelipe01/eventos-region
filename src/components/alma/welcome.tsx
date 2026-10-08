@@ -27,7 +27,7 @@ export function AlmaWelcome({ nextHref }: { nextHref: string }) {
 
       <div className="flex w-full min-w-0 max-w-md flex-1 flex-col items-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] text-center sm:max-w-lg">
         <p className="text-[11px] font-semibold tracking-[0.35em] text-[#3d5a4a]">
-          AGENTICS
+          VAMOS CON TODA
         </p>
 
         <div className="flex flex-1 flex-col items-center justify-center pt-[12vh] pb-4">
@@ -40,7 +40,7 @@ export function AlmaWelcome({ nextHref }: { nextHref: string }) {
             </span>
           </h1>
 
-          <p className="mt-5 max-w-[19rem] text-[clamp(1rem,4.2vw,1.2rem)] leading-relaxed text-[#2f4a3c] sm:max-w-md">
+          <p className="mt-5 max-w-[19rem] text-[clamp(1.1rem,4.6vw,1.3rem)] leading-relaxed text-[#2f4a3c] sm:max-w-md">
             Hoy queremos conocerte. Tus historias nos ayudarán a construir un
             futuro mejor para Las Moras.
           </p>

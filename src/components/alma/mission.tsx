@@ -30,7 +30,7 @@ export function AlmaMission({ nextHref }: { nextHref: string }) {
           <Confetti />
           <Snack className="mt-10 h-32 w-auto" />
           <h1 className="mt-6 text-[clamp(2rem,8vw,2.5rem)] font-extrabold">¡Gracias!</h1>
-          <p className="mt-3 text-[#2f4a3c]">
+          <p className="mt-3 text-[clamp(1.125rem,4.8vw,1.35rem)] leading-relaxed text-[#2f4a3c]">
             Ya completaste
             <br />
             tu primera misión.
@@ -40,7 +40,7 @@ export function AlmaMission({ nextHref }: { nextHref: string }) {
               <rect x="3" y="8" width="18" height="13" rx="2" />
               <path d="M12 8v13M3 12h18M12 8c-3 0-5-1.5-5-3.5S9.5 2 12 5c2.5-3 5-2.5 5-.5S15 8 12 8Z" />
             </svg>
-            <p className="text-sm leading-snug">
+            <p className="text-[clamp(1rem,4.2vw,1.125rem)] leading-snug">
               <span className="font-bold">Ahora reclama</span>
               <br />
               tu bebida y tu refrigerio.
@@ -55,7 +55,7 @@ export function AlmaMission({ nextHref }: { nextHref: string }) {
     <AlmaShell step={index + 1}>
       <div className="flex w-full flex-1 flex-col items-center justify-center">
         <h1 className="w-full text-[clamp(1.5rem,6.5vw,2.25rem)] leading-tight font-extrabold text-balance">{question.title}</h1>
-        {question.hint && <p className="mt-3 max-w-xs text-[15px] leading-snug text-[#2f4a3c] sm:max-w-sm sm:text-base">{question.hint}</p>}
+        {question.hint && <p className="mt-3 max-w-sm text-[clamp(1.05rem,4.4vw,1.2rem)] leading-snug text-[#2f4a3c] sm:max-w-md">{question.hint}</p>}
         <div className="mt-10 w-full sm:mt-14">
           <Recorder
             key={question.id}

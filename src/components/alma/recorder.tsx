@@ -202,7 +202,7 @@ export function Recorder({
           <ProcessingIcon />
         )}
         <h2 className="text-3xl font-extrabold">¡Listo!</h2>
-        <p className="whitespace-pre-line text-[#2f4a3c]">
+        <p className="whitespace-pre-line text-[clamp(1.05rem,4.4vw,1.2rem)] text-[#2f4a3c]">
           {phase === "done" ? "Tu respuesta quedó guardada." : "Estamos procesando\ntu respuesta…"}
         </p>
       </div>
@@ -229,7 +229,7 @@ export function Recorder({
         <p className="text-2xl font-bold tabular-nums" aria-live="off">
           {format(seconds)}
         </p>
-        <p className="text-sm text-[#5b6f63]">Presiona para detener</p>
+        <p className="text-base text-[#5b6f63]">Presiona para detener</p>
       </div>
     );
   }
@@ -263,7 +263,7 @@ export function Recorder({
         <span className="absolute -inset-5 -z-10 rounded-full bg-[#1f4d36]/10" />
         <MicIcon className="size-10" />
       </button>
-      <p className="text-sm leading-snug text-[#5b6f63]">
+      <p className="text-base leading-snug text-[#5b6f63]">
         Presiona para grabar
         <br />
         tu respuesta
