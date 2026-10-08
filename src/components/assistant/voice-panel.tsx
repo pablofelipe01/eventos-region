@@ -126,6 +126,16 @@ export function VoicePanel({ voice, compact = false }: { voice: RealtimeVoice; c
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
+        {voice.audioBlocked && (
+          <button
+            type="button"
+            onClick={voice.resumeAudio}
+            className="animate-pulse rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
+            title="El navegador bloqueó el sonido; toca para escuchar a Región"
+          >
+            🔊 Activar sonido
+          </button>
+        )}
         {canInterrupt && !compact && (
           <button
             type="button"

@@ -8,8 +8,9 @@ import {
   nativeWebSearchQuery,
   nativeWebSearchSources,
 } from "@/lib/agent/sources";
-import { TOOL_LABELS, isRegionToolName, type WebSource } from "@/lib/agent/tool-schemas";
+import { TOOL_LABELS, isDeviceToolName, isRegionToolName, type WebSource } from "@/lib/agent/tool-schemas";
 import type { RegionUIMessage, RegionUIPart } from "@/lib/agent/types";
+import { DeviceToolView, type DeviceResultHandler, type DeviceToolPart } from "./device-tool-view";
 import { Markdown } from "./markdown";
 
 type ToolPart = Extract<RegionUIPart, { toolCallId: string }>;
@@ -90,7 +91,18 @@ function NativeWebSearchView({
   );
 }
 
-function ToolPartView({ part, onOpenArtifact }: { part: ToolPart; onOpenArtifact: (id: string) => void }) {
+type DeviceProps = {
+  /** Las tarjetas del dispositivo de este mensaje aún pueden ejecutarse. */
+  deviceActionable: boolean;
+  onDeviceResult: DeviceResultHandler;
+};
+
+function ToolPartView({
+  part,
+  onOpenArtifact,
+  deviceActionable,
+  onDeviceResult,
+}: { part: ToolPart; onOpenArtifact: (id: string) => void } & DeviceProps) {
   if (isNativeWebSearchPart(part)) {
     const loose = part as unknown as { state: string; input?: unknown; output?: unknown; errorText?: string };
     return <NativeWebSearchView {...loose} />;
@@ -102,6 +114,15 @@ function ToolPartView({ part, onOpenArtifact }: { part: ToolPart; onOpenArtifact
     );
   }
   const name = part.type.slice("tool-".length);
+  if (isDeviceToolName(name)) {
+    return (
+      <DeviceToolView
+        part={part as unknown as DeviceToolPart}
+        actionable={deviceActionable}
+        onResult={onDeviceResult}
+      />
+    );
+  }
   if (!isRegionToolName(name)) return null;
   const labels = TOOL_LABELS[name];
 
@@ -162,11 +183,13 @@ export function MessageView({
   message,
   isStreaming,
   onOpenArtifact,
+  deviceActionable,
+  onDeviceResult,
 }: {
   message: RegionUIMessage;
   isStreaming: boolean;
   onOpenArtifact: (id: string) => void;
-}) {
+} & DeviceProps) {
   const isUser = message.role === "user";
   const fromVoice = message.metadata?.source === "voice";
   const { cited } = isUser ? { cited: [] } : collectMessageSources(message.parts);
@@ -213,7 +236,15 @@ export function MessageView({
             return null; // se agrupan en "Fuentes" al pie del mensaje
           }
           if (isToolUIPart(part)) {
-            return <ToolPartView key={key} part={part as ToolPart} onOpenArtifact={onOpenArtifact} />;
+            return (
+              <ToolPartView
+                key={key}
+                part={part as ToolPart}
+                onOpenArtifact={onOpenArtifact}
+                deviceActionable={deviceActionable}
+                onDeviceResult={onDeviceResult}
+              />
+            );
           }
           return null;
         })}

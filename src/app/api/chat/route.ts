@@ -25,7 +25,8 @@ export const maxDuration = 300;
 
 const TOOLS_NOTE = `Notas sobre herramientas:
 - La búsqueda web es la herramienta nativa web_search del proveedor: úsala para datos actuales y cita las fuentes con enlaces.
-- Parte del historial puede venir de la conversación por voz (transcripciones de lo hablado y artefactos creados por voz): es el mismo hilo, continúalo con naturalidad.`;
+- Parte del historial puede venir de la conversación por voz (transcripciones de lo hablado y artefactos creados por voz): es el mismo hilo, continúalo con naturalidad.
+- Las herramientas del dispositivo (getLocation, getDeviceInfo, copyToClipboard, openOnDevice, shareContent, takePhoto) se ejecutan en el navegador del usuario y su resultado llega en el siguiente paso.`;
 
 function friendlyStreamError(error: unknown): string {
   console.error("[api/chat] stream error", error);
@@ -68,11 +69,11 @@ export async function POST(request: Request) {
   const validation = await safeValidateUIMessages<RegionUIMessage>({
     messages: body.messages,
     tools: {
-      createArtifact: { inputSchema: TOOL_INPUT_SCHEMAS.createArtifact },
-      updateArtifact: { inputSchema: TOOL_INPUT_SCHEMAS.updateArtifact },
-      generateImage: { inputSchema: TOOL_INPUT_SCHEMAS.generateImage },
-      // Búsqueda de la voz (solo aparece en el historial).
-      webSearch: { inputSchema: TOOL_INPUT_SCHEMAS.webSearch },
+      // Incluye webSearch (búsqueda de la voz, solo aparece en el historial) y
+      // las herramientas del dispositivo (resultados que añade el navegador).
+      ...Object.fromEntries(
+        Object.entries(TOOL_INPUT_SCHEMAS).map(([name, inputSchema]) => [name, { inputSchema }]),
+      ),
       // Búsqueda nativa del proveedor: su entrada la define Anthropic/OpenAI.
       web_search: { inputSchema: z.any() },
     },

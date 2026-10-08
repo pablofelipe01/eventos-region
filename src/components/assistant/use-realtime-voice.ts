@@ -22,6 +22,9 @@
  *  - Artefactos: en el navegador, contra la MISMA lista de mensajes de `useChat`
  *    que usa el chat de texto (el panel derecho se actualiza al instante).
  *  - generateImage → /api/tools; webSearch → /api/web-search.
+ *  - Dispositivo (ubicación, abrir apps, compartir, foto): en el navegador. Las
+ *    interactivas esperan el toque del usuario en su tarjeta del hilo
+ *    (`resolveDeviceCall`); la foto se envía después como `input_image`.
  *  - Al terminar la respuesta (`response.done`) se envía un
  *    `conversation.item.create` (function_call_output) por llamada y luego un
  *    único `response.create`, salvo que el usuario esté hablando (su turno
@@ -35,18 +38,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArtifactRegistry } from "@/lib/agent/artifacts";
 import { buildVoiceContext, readableError, voiceMessages } from "@/lib/agent/message-utils";
 import {
+  isDeviceToolName,
   isRegionToolName,
   SERVER_TOOL_ENDPOINTS,
   TOOL_INPUT_SCHEMAS,
   TOOL_LABELS,
   type ArtifactToolOutput,
   type CreateArtifactInput,
+  type DeviceToolName,
   type GenerateImageOutput,
   type RegionToolName,
+  type TakePhotoOutput,
   type UpdateArtifactInput,
   type WebSearchOutput,
 } from "@/lib/agent/tool-schemas";
 import type { RegionUIMessage, RegionUIPart } from "@/lib/agent/types";
+import { downscaleDataUrl, startDeviceTool, type DeviceToolOutput } from "@/lib/device/device-actions";
 
 export type VoiceStatus = "idle" | "connecting" | "listening" | "user-speaking" | "thinking" | "speaking";
 
@@ -66,6 +73,20 @@ type FunctionCallItem = {
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- eventos JSON del servidor sin tipar */
 type ServerEvent = { type: string; [key: string]: any };
+
+/** Resultado de una llamada: texto para `function_call_output` y, si hay, una foto para el modelo. */
+type CallResult = { output: string; image?: string };
+
+/** Llamada del dispositivo que espera el toque del usuario en su tarjeta. */
+type PendingDeviceCall = {
+  responseId: string;
+  name: DeviceToolName;
+  input: unknown;
+  resolve: (output: DeviceToolOutput) => void;
+};
+
+/** La foto viaja por el canal de datos WebRTC: se reduce para no superar su tamaño máximo de mensaje. */
+const VOICE_PHOTO = { maxSide: 768, quality: 0.7 };
 
 /** Errores del servidor que forman parte del flujo normal (no se muestran). */
 const BENIGN_ERROR_CODES = new Set([
@@ -111,6 +132,12 @@ function outputForModel(name: RegionToolName, output: unknown): string {
       return JSON.stringify({ ...artifact, note: "El artefacto ya se muestra en el panel derecho." });
     }
   }
+  if (name === "takePhoto") {
+    const photo = output as TakePhotoOutput;
+    if (photo?.ok) {
+      return JSON.stringify({ ok: true, note: "La foto del usuario se adjunta a continuación como imagen." });
+    }
+  }
   return JSON.stringify(output ?? { ok: false, error: "Sin resultado." });
 }
 
@@ -126,6 +153,8 @@ export function useRealtimeVoice({
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
+  /** El navegador bloqueó la reproducción (autoplay): hace falta un toque para oír a Región. */
+  const [audioBlocked, setAudioBlocked] = useState(false);
   const [tools, setTools] = useState<VoiceToolActivity[]>([]);
   const [caption, setCaption] = useState<VoiceCaption | null>(null);
   const [streams, setStreams] = useState<{ mic: MediaStream | null; remote: MediaStream | null }>({
@@ -147,8 +176,9 @@ export function useRealtimeVoice({
   const pendingCreateRef = useRef(false);
   const awaitingRef = useRef(false);
   const followUpRef = useRef(false);
-  const callsRef = useRef(new Map<string, Promise<string>>());
+  const callsRef = useRef(new Map<string, Promise<CallResult>>());
   const responseCallsRef = useRef(new Map<string, Set<string>>());
+  const pendingDeviceRef = useRef(new Map<string, PendingDeviceCall>());
 
   // Callbacks siempre actualizados sin reconectar la sesión.
   const bridgeRef = useRef({ getMessages, setMessages });
@@ -178,6 +208,19 @@ export function useRealtimeVoice({
 
   const cleanup = useCallback(() => {
     sessionRef.current += 1;
+    // Tarjetas del dispositivo sin tocar: se cierran como canceladas.
+    for (const [callId, pending] of pendingDeviceRef.current) {
+      const cancelled = { ok: false as const, error: "Cancelado: terminó la conversación de voz.", code: "cancelled_by_user" };
+      bridgeRef.current.setMessages((m) =>
+        voiceMessages.upsertToolPart(
+          m,
+          pending.responseId,
+          toolPart(pending.name, callId, "output-available", pending.input, cancelled),
+        ),
+      );
+      pending.resolve(cancelled);
+    }
+    pendingDeviceRef.current.clear();
     dcRef.current?.close();
     pcRef.current?.getSenders().forEach((sender) => sender.track?.stop());
     pcRef.current?.close();
@@ -195,6 +238,7 @@ export function useRealtimeVoice({
     setTools([]);
     setCaption(null);
     setMuted(false);
+    setAudioBlocked(false);
     setStreams({ mic: null, remote: null });
   }, []);
 
@@ -223,14 +267,14 @@ export function useRealtimeVoice({
     refreshStatus();
   }, [refreshStatus, send]);
 
-  /** Ejecuta una llamada a función y devuelve el texto para `function_call_output`. */
+  /** Ejecuta una llamada a función y devuelve el texto para `function_call_output` (y la foto, si hay). */
   const executeCall = useCallback(
-    async (responseId: string, name: string, callId: string, rawArguments: string | undefined): Promise<string> => {
+    async (responseId: string, name: string, callId: string, rawArguments: string | undefined): Promise<CallResult> => {
       const session = sessionRef.current;
       const { setMessages: update, getMessages: current } = bridgeRef.current;
 
       if (!isRegionToolName(name)) {
-        return JSON.stringify({ ok: false, error: `Herramienta desconocida: ${name}` });
+        return { output: JSON.stringify({ ok: false, error: `Herramienta desconocida: ${name}` }) };
       }
 
       let args: unknown;
@@ -243,7 +287,7 @@ export function useRealtimeVoice({
       if (!parsed.success) {
         const message = `Argumentos inválidos: ${parsed.error.issues.map((i) => i.message).join("; ")}`;
         update((m) => voiceMessages.upsertToolPart(m, responseId, toolPart(name, callId, "output-error", args, message)));
-        return JSON.stringify({ ok: false, error: message });
+        return { output: JSON.stringify({ ok: false, error: message }) };
       }
       const input = parsed.data;
 
@@ -252,7 +296,19 @@ export function useRealtimeVoice({
 
       let output: unknown;
       try {
-        if (name === "createArtifact" || name === "updateArtifact") {
+        if (isDeviceToolName(name)) {
+          // En el navegador. Las interactivas esperan el toque en su tarjeta (resolveDeviceCall).
+          const immediate = await startDeviceTool(name, input);
+          output =
+            immediate ??
+            (await new Promise<DeviceToolOutput>((resolve) => {
+              pendingDeviceRef.current.set(callId, { responseId, name, input, resolve });
+            }));
+          if (session !== sessionRef.current) return { output: "" };
+          update((m) =>
+            voiceMessages.upsertToolPart(m, responseId, toolPart(name, callId, "output-available", input, output)),
+          );
+        } else if (name === "createArtifact" || name === "updateArtifact") {
           // Mismo estado que el chat de texto: el registro se deriva de la lista
           // de mensajes actual dentro de la actualización (síncrona en useChat).
           const run = (messages: RegionUIMessage[]) => {
@@ -286,7 +342,7 @@ export function useRealtimeVoice({
           } catch (err) {
             output = { ok: false, error: `No se pudo ejecutar ${name}: ${readableError(err)}` };
           }
-          if (session !== sessionRef.current) return "";
+          if (session !== sessionRef.current) return { output: "" };
           update((m) =>
             voiceMessages.upsertToolPart(m, responseId, toolPart(name, callId, "output-available", input, output)),
           );
@@ -294,10 +350,24 @@ export function useRealtimeVoice({
       } finally {
         if (session === sessionRef.current) setTools((list) => list.filter((t) => t.callId !== callId));
       }
-      return outputForModel(name, output);
+      const photo = name === "takePhoto" ? (output as TakePhotoOutput) : null;
+      const image =
+        photo?.ok && photo.dataUrl
+          ? await downscaleDataUrl(photo.dataUrl, VOICE_PHOTO.maxSide, VOICE_PHOTO.quality)
+          : undefined;
+      return { output: outputForModel(name, output), image };
     },
     [],
   );
+
+  /** Entrega el resultado de una tarjeta del dispositivo (toque del usuario) a la llamada de voz en espera. */
+  const resolveDeviceCall = useCallback((callId: string, output: DeviceToolOutput): boolean => {
+    const pending = pendingDeviceRef.current.get(callId);
+    if (!pending) return false;
+    pendingDeviceRef.current.delete(callId);
+    pending.resolve(output);
+    return true;
+  }, []);
 
   /** Empieza a ejecutar una llamada (idempotente por call_id). */
   const startCall = useCallback(
@@ -337,13 +407,32 @@ export function useRealtimeVoice({
       awaitingRef.current = true;
       refreshStatus();
       const outputs = await Promise.all(
-        callIds.map(async (callId) => ({ callId, output: await callsRef.current.get(callId)! })),
+        callIds.map(async (callId) => ({ callId, result: await callsRef.current.get(callId)! })),
       );
       if (session !== sessionRef.current) return;
-      for (const { callId, output } of outputs) {
+      for (const { callId, result } of outputs) {
         send({
           type: "conversation.item.create",
-          item: { type: "function_call_output", call_id: callId, output },
+          item: { type: "function_call_output", call_id: callId, output: result.output },
+        });
+      }
+      // Las fotos del usuario (takePhoto) entran como imagen en un mensaje aparte.
+      const maxMessageSize = pcRef.current?.sctp?.maxMessageSize ?? 256 * 1024;
+      for (const { result } of outputs) {
+        if (!result.image) continue;
+        const fits = result.image.length < maxMessageSize - 4096;
+        send({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: fits
+              ? [
+                  { type: "input_text", text: "Esta es la foto que tomé con takePhoto:" },
+                  { type: "input_image", image_url: result.image },
+                ]
+              : [{ type: "input_text", text: "(La foto era demasiado grande para enviarla por voz; pídeme que la envíe por el chat de texto.)" }],
+          },
         });
       }
       awaitingRef.current = false;
@@ -402,6 +491,8 @@ export function useRealtimeVoice({
 
         /* ---------- Respuesta del asistente ---------- */
         case "response.created":
+          // Respaldo: una respuesta nueva nunca debe quedar silenciada por un barge-in anterior.
+          if (audioRef.current) audioRef.current.muted = false;
           activeResponseRef.current = event.response?.id ?? null;
           pendingCreateRef.current = false;
           awaitingRef.current = false;
@@ -483,11 +574,33 @@ export function useRealtimeVoice({
     [finishResponse, refreshStatus, startCall],
   );
 
+  /** Reproduce la voz de Región; si el navegador lo bloquea, lo indica en vez de quedar mudo. */
+  const playAudio = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio?.srcObject) return;
+    audio
+      .play()
+      .then(() => setAudioBlocked(false))
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "NotAllowedError") setAudioBlocked(true);
+        else if (!(err instanceof DOMException && err.name === "AbortError")) console.warn("[voz] no se pudo reproducir", err);
+      });
+  }, []);
+
   const start = useCallback(async () => {
     if (pcRef.current || micRef.current) return;
     setError(null);
     setStatus("connecting");
     const session = ++sessionRef.current;
+
+    // El reproductor se crea aquí, aún dentro del clic del usuario (antes de cualquier await),
+    // y se inserta en la página: así el navegador lo asocia al gesto y no bloquea el audio.
+    const audio = document.createElement("audio");
+    audio.autoplay = true;
+    audio.setAttribute("playsinline", "");
+    audio.hidden = true;
+    document.body.appendChild(audio);
+    audioRef.current = audio;
 
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
@@ -515,12 +628,10 @@ export function useRealtimeVoice({
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
 
-      const audio = document.createElement("audio");
-      audio.autoplay = true;
-      audioRef.current = audio;
       pc.ontrack = (e) => {
         const remote = e.streams[0] ?? new MediaStream([e.track]);
         audio.srcObject = remote;
+        playAudio();
         setStreams((s) => ({ ...s, remote }));
       };
       pc.onconnectionstatechange = () => {
@@ -578,7 +689,7 @@ export function useRealtimeVoice({
       cleanup();
       setStatus("idle");
     }
-  }, [cleanup, handleEvent, refreshStatus]);
+  }, [cleanup, handleEvent, playAudio, refreshStatus]);
 
   /** Silencia / reactiva el micrófono sin cortar la llamada. */
   const toggleMute = useCallback(() => {
@@ -621,6 +732,9 @@ export function useRealtimeVoice({
     error,
     isActive: status !== "idle",
     muted,
+    audioBlocked,
+    /** Reintenta la reproducción dentro de un toque del usuario. */
+    resumeAudio: playAudio,
     tools,
     caption,
     streams,
@@ -629,6 +743,7 @@ export function useRealtimeVoice({
     toggleMute,
     interrupt,
     sendText,
+    resolveDeviceCall,
     clearError: useCallback(() => setError(null), []),
   };
 }

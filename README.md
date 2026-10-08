@@ -1,7 +1,22 @@
-# Región — asistente de IA
+# Región — asistente de IA · Alma — Las Moras
 
-**Región** es un asistente de IA conversacional, por texto y por voz, que ayuda a crear lo que necesites: documentos, código, pequeñas páginas web, imágenes e investigaciones con búsqueda web.
-##test 
+Este proyecto tiene dos aplicaciones independientes:
+
+- **Alma** (ruta raíz `/`): experiencia de voz para el evento de Las Moras. Las personas escanean un QR, responden preguntas hablando y sus respuestas se transcriben y se guardan en Airtable.
+- **Región** (ruta `/agente`): asistente de IA conversacional, por texto y por voz, que ayuda a crear documentos, código, páginas web, imágenes e investigaciones con búsqueda web, y puede usar el dispositivo (ubicación, mapas, cámara…).
+
+## Alma — Las Moras
+
+Flujo (`src/components/alma/`): bienvenida (`/`) → Misión 1 (`/alma/mision`: dos preguntas grabadas por voz y pantalla de gracias) → Mesa de las herramientas (`/alma/mesa`: elegir un objeto y contar una historia).
+
+- Cada respuesta se graba en el navegador (`MediaRecorder`), se envía a `POST /api/alma/respuesta`, se transcribe con OpenAI (`gpt-4o-mini-transcribe`) y se guarda en Airtable con el audio adjunto.
+- Cada celular genera un código anónimo (`P-XXXX`, en `localStorage`) que se repite en todas sus respuestas, para agruparlas por persona.
+- Tabla `Respuestas` en Airtable: `Participante`, `Estación` (Misión 1 · Mesa de las herramientas), `Pregunta`, `Objeto` (Machete · Sombrero · Botas · Frutos), `Audio` (adjunto), `Transcripción`, `Duración (s)`, `Fecha`.
+- Variables: `AIRTABLE_TOKEN` (con `data.records:write` y acceso a la base) y `AIRTABLE_BASE_ID`. Si faltan, el endpoint responde `missing_airtable_config`.
+- La grabación requiere HTTPS (o `localhost`): en producción funciona directamente; en local, desde el celular, hace falta un túnel HTTPS.
+
+## Región — asistente de IA
+
 ## Qué hace
 
 - **Chat de texto en streaming** con selector de modelo (Claude u OpenAI). El proveedor por defecto se define con `DEFAULT_PROVIDER`. Los IDs de modelo están en un solo archivo: `src/lib/agent/config.ts`.
@@ -12,6 +27,11 @@
 - **Voz en tiempo real full-duplex** (OpenAI Realtime por WebRTC, `gpt-realtime-2.1`): hablas y escuchas a la vez y puedes **interrumpir** a Región cuando quieras. Orbe con el estado en vivo (escuchando / hablas tú / habla Región / pensando / usando una herramienta), subtítulos parciales, silenciar micrófono, interrumpir y colgar.
   - **Crea mientras hablan:** por voz funcionan `createArtifact`, `updateArtifact`, `generateImage` y `webSearch`; el panel derecho se actualiza al momento.
   - **Un solo hilo:** transcripciones, artefactos e imágenes de la voz quedan en la misma conversación, y si vuelves a escribir, el modelo de texto recibe esos turnos como historial.
+- **Control del dispositivo** (celular o computador, en chat y en voz). El agente encadena estas herramientas por su cuenta; las ejecuta el navegador (`src/lib/device/device-actions.ts`), no el servidor:
+  - Automáticas: `getLocation` (GPS: latitud, longitud, precisión, altitud), `getDeviceInfo` (tipo de dispositivo, sistema, hora local, batería, conexión) y `copyToClipboard`.
+  - Con un toque del usuario (tarjeta con botón en el hilo): `openOnDevice` (Google Maps, rutas, Google Earth, llamada, SMS, WhatsApp con mensaje, correo, evento de Google Calendar, web), `shareContent` (menú nativo de compartir) y `takePhoto` (cámara o galería; el modelo ve la foto). El toque es la confirmación y además el gesto que exigen los navegadores para abrir apps, compartir o usar la cámara.
+  - Límite de la plataforma: una web puede **abrir** otras apps, pero no ver ni manejar lo que pasa dentro de ellas. La ubicación se lee del GPS directamente, sin abrir Maps.
+  - Requiere **HTTPS** (o `localhost`). Para probar en el celular usa el despliegue de Vercel o un túnel HTTPS; con `http://IP-local:3000` el navegador bloquea la ubicación y el micrófono.
 - **Historial en el navegador** (`useChat`): no hay base de datos en v1; al recargar la página se pierde la conversación.
 
 ## Puesta en marcha

@@ -1,15 +1,17 @@
 "use client";
 
 import { Chat, useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { collectArtifacts } from "@/lib/agent/artifacts";
 import { CHAT_MODELS, FALLBACK_PROVIDER, PROVIDERS, type ProviderId } from "@/lib/agent/config";
 import { readableError, sanitizeMessagesForRequest } from "@/lib/agent/message-utils";
 import type { PublicAgentConfig } from "@/lib/agent/models";
-import type { ArtifactToolOutput } from "@/lib/agent/tool-schemas";
+import { isDeviceToolName, type ArtifactToolOutput, type DeviceToolName } from "@/lib/agent/tool-schemas";
 import type { RegionUIMessage } from "@/lib/agent/types";
+import { startDeviceTool, type DeviceToolOutput } from "@/lib/device/device-actions";
 import { ArtifactPanel } from "./artifact-panel";
+import type { DeviceResultHandler } from "./device-tool-view";
 import { MessageView, TypingDots } from "./message-view";
 import { useRealtimeVoice } from "./use-realtime-voice";
 import { VoicePanel } from "./voice-panel";
@@ -22,11 +24,32 @@ const transport = new DefaultChatTransport<RegionUIMessage>({
 });
 
 const SUGGESTIONS = [
+  "¿Dónde estoy? Dame mis coordenadas y ábrelas en Google Maps",
   "Crea una landing page en HTML para un festival de música en Medellín",
   "Genera una imagen de un atardecer en el Eje Cafetero, estilo acuarela",
   "Busca las noticias más recientes sobre IA en Colombia y resúmelas",
-  "Escríbeme un script en Python que lea un CSV y calcule promedios por columna",
 ];
+
+/** Freno de seguridad: llamadas al dispositivo por respuesta antes de dejar de reenviar solo. */
+const MAX_DEVICE_CALLS_PER_TURN = 8;
+
+const deviceToolOf = (type: string) => (type.startsWith("tool-") && isDeviceToolName(type.slice(5)) ? type.slice(5) : null);
+
+/**
+ * Reenvía la conversación al modelo cuando las herramientas del dispositivo
+ * del último paso ya tienen resultado (las ejecuta el navegador, no el servidor).
+ */
+function shouldContinueAfterDeviceTools({ messages }: { messages: RegionUIMessage[] }): boolean {
+  const last = messages.at(-1);
+  if (!last || last.role !== "assistant" || last.metadata?.source === "voice") return false;
+  if (!lastAssistantMessageIsCompleteWithToolCalls({ messages })) return false;
+  let stepStart = -1;
+  last.parts.forEach((part, index) => {
+    if (part.type === "step-start") stepStart = index;
+  });
+  if (!last.parts.slice(stepStart + 1).some((part) => deviceToolOf(part.type))) return false;
+  return last.parts.filter((part) => deviceToolOf(part.type)).length <= MAX_DEVICE_CALLS_PER_TURN;
+}
 
 /** Último artefacto creado/actualizado (para abrir el panel automáticamente). */
 function lastArtifactActivity(messages: RegionUIMessage[]): { id: string; key: string } | null {
@@ -77,14 +100,61 @@ export function Assistant() {
   // Una sola instancia de Chat: es el hilo compartido por texto y voz.
   // id fijo: si no, se llamaría a generateId() (Math.random) durante el prerender,
   // algo que Cache Components no permite. Solo hay una conversación por pestaña.
-  const [chat] = useState(() => new Chat<RegionUIMessage>({ id: "region", transport }));
+  // El reenvío automático tras una herramienta del dispositivo usa el modelo elegido en ese momento.
+  const providerRef = useRef(provider);
+  useEffect(() => {
+    providerRef.current = provider;
+  }, [provider]);
+
+  const [chat] = useState(() => {
+    const instance: Chat<RegionUIMessage> = new Chat<RegionUIMessage>({
+      id: "region",
+      transport,
+      sendAutomaticallyWhen: shouldContinueAfterDeviceTools,
+      // Herramientas del dispositivo: las automáticas se ejecutan ya; las
+      // interactivas esperan el toque en su tarjeta (onDeviceResult).
+      onToolCall: ({ toolCall }) => {
+        if (toolCall.dynamic || !isDeviceToolName(toolCall.toolName)) return;
+        const name = toolCall.toolName;
+        void startDeviceTool(name, toolCall.input).then((output) => {
+          if (output) addDeviceOutput(instance, name, toolCall.toolCallId, output);
+        });
+      },
+    });
+    return instance;
+  });
   const { messages, sendMessage, status, error, stop, setMessages, clearError, regenerate } =
     useChat<RegionUIMessage>({ chat });
+
+  /** Entrega un resultado del dispositivo al chat (sin await: evita bloqueos del SDK). */
+  function addDeviceOutput(
+    target: Chat<RegionUIMessage>,
+    tool: DeviceToolName,
+    toolCallId: string,
+    output: DeviceToolOutput,
+  ) {
+    void target.addToolOutput({
+      tool,
+      toolCallId,
+      output: output as never,
+      options: { body: { provider: providerRef.current } },
+    });
+  }
 
   // La voz lee y escribe la misma lista de mensajes de forma síncrona
   // (chat.messages siempre está al día, sin esperar a un render).
   const getMessages = useCallback(() => chat.messages, [chat]);
   const voice = useRealtimeVoice({ getMessages, setMessages });
+  const { resolveDeviceCall } = voice;
+
+  /** Toque en una tarjeta del dispositivo: va a la llamada de voz en espera o al chat. */
+  const onDeviceResult = useCallback<DeviceResultHandler>(
+    (tool, toolCallId, output) => {
+      if (resolveDeviceCall(toolCallId, output)) return;
+      addDeviceOutput(chat, tool, toolCallId, output);
+    },
+    [chat, resolveDeviceCall],
+  );
 
   /* ---------------- Artefactos ---------------- */
   const artifacts = useMemo(() => collectArtifacts(messages), [messages]);
@@ -184,8 +254,8 @@ export function Assistant() {
                 <div>
                   <h2 className="text-2xl font-semibold">¿Qué creamos hoy?</h2>
                   <p className="mt-2 text-sm text-zinc-500">
-                    Escríbeme o pulsa el micrófono para hablar. Puedo crear documentos, código, páginas web,
-                    imágenes y buscar en la web.
+                    Escríbeme o pulsa el micrófono para hablar. Puedo crear documentos, código, páginas web e
+                    imágenes, buscar en la web y usar tu dispositivo: ubicación, mapas, llamadas, mensajes y cámara.
                   </p>
                 </div>
                 <div className="grid w-full gap-2 sm:grid-cols-2">
@@ -208,6 +278,10 @@ export function Assistant() {
                   message={message}
                   isStreaming={busy && message.id === lastMessage?.id}
                   onOpenArtifact={openArtifact}
+                  deviceActionable={
+                    message.metadata?.source === "voice" ? voice.isActive : !busy && message.id === lastMessage?.id
+                  }
+                  onDeviceResult={onDeviceResult}
                 />
               ))
             )}

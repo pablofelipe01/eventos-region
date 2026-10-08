@@ -2,9 +2,19 @@ import type { UIDataTypes, UIMessage } from "ai";
 import type { ProviderId } from "./config";
 import type {
   ArtifactToolOutput,
+  CopyToClipboardInput,
   CreateArtifactInput,
+  DeviceActionOutput,
+  DeviceInfoOutput,
   GenerateImageInput,
   GenerateImageOutput,
+  GetDeviceInfoInput,
+  GetLocationInput,
+  LocationOutput,
+  OpenOnDeviceInput,
+  ShareContentInput,
+  TakePhotoInput,
+  TakePhotoOutput,
   UpdateArtifactInput,
   WebSearchInput,
   WebSearchOutput,
@@ -39,6 +49,13 @@ export type RegionUITools = {
   webSearch: { input: WebSearchInput; output: WebSearchOutput };
   /** Búsqueda web NATIVA del proveedor en el chat de texto (la ejecuta Anthropic/OpenAI). */
   web_search: { input: { query?: string } | Record<string, never>; output: NativeWebSearchOutput };
+  /* Dispositivo (las ejecuta el navegador). */
+  getLocation: { input: GetLocationInput; output: LocationOutput };
+  getDeviceInfo: { input: GetDeviceInfoInput; output: DeviceInfoOutput };
+  copyToClipboard: { input: CopyToClipboardInput; output: DeviceActionOutput };
+  openOnDevice: { input: OpenOnDeviceInput; output: DeviceActionOutput };
+  shareContent: { input: ShareContentInput; output: DeviceActionOutput };
+  takePhoto: { input: TakePhotoInput; output: TakePhotoOutput };
 };
 
 export type RegionUIMessage = UIMessage<RegionMessageMetadata, UIDataTypes, RegionUITools>;

@@ -7,7 +7,8 @@ import type { RegionUIMessage, RegionUIPart } from "./types";
 /**
  * Prepara el historial antes de enviarlo a /api/chat:
  * - quita el base64 de las imágenes generadas (el modelo no lo necesita y
- *   evita superar el límite de 4,5 MB por petición de Vercel),
+ *   evita superar el límite de 4,5 MB por petición de Vercel) y de las fotos
+ *   del usuario de turnos anteriores,
  * - elimina partes de texto vacías (p. ej. transcripciones de voz pendientes),
  *   que algunos proveedores rechazan,
  * - elimina herramientas sin terminar (stream detenido o herramienta de voz en
@@ -18,6 +19,7 @@ const TERMINAL_TOOL_STATES = new Set(["output-available", "output-error", "outpu
 
 export function sanitizeMessagesForRequest(messages: RegionUIMessage[]): RegionUIMessage[] {
   const result: RegionUIMessage[] = [];
+  const lastId = messages.at(-1)?.id;
   for (const message of messages) {
     const parts = message.parts
       .filter((part) => !(part.type === "text" && part.text.trim() === ""))
@@ -37,6 +39,16 @@ export function sanitizeMessagesForRequest(messages: RegionUIMessage[]): RegionU
           part.state === "output-available" &&
           part.output.ok &&
           part.output.dataUrl
+        ) {
+          return { ...part, output: { ...part.output, dataUrl: undefined, omitted: true } };
+        }
+        // La foto del usuario solo viaja en el turno en que se tomó (el modelo ya la vio).
+        if (
+          part.type === "tool-takePhoto" &&
+          part.state === "output-available" &&
+          part.output.ok &&
+          part.output.dataUrl &&
+          message.id !== lastId
         ) {
           return { ...part, output: { ...part.output, dataUrl: undefined, omitted: true } };
         }
