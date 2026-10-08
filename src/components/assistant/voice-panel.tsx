@@ -4,7 +4,7 @@
  * Modo voz: orbe con el estado en vivo (escuchando / hablas tú / habla Región /
  * pensando / usando una herramienta), subtítulos parciales y controles
  * (silenciar micrófono, interrumpir, colgar).
- */
+ */     
 import { useEffect, useRef } from "react";
 import type { RealtimeVoice } from "./use-realtime-voice";
 
