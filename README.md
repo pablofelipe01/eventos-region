@@ -7,11 +7,11 @@ Este proyecto tiene dos aplicaciones independientes:
 
 ## Alma — Las Moras
 
-Flujo (`src/components/alma/`): bienvenida (`/`) → Misión 1 (`/alma/mision`: dos preguntas grabadas por voz y pantalla de gracias) → Mesa de las herramientas (`/alma/mesa`: elegir un objeto y contar una historia).
+Flujo (`src/components/alma/`): bienvenida (`/`) → Misión 1 (`/alma/mision`: dos preguntas grabadas por voz y pantalla de gracias) → Mesa de las herramientas (`/alma/mesa`: ver las herramientas de referencia, elegir una en la mesa física y contar una historia).
 
 - Cada respuesta se graba en el navegador (`MediaRecorder`), se envía a `POST /api/alma/respuesta`, se transcribe con OpenAI (`gpt-4o-mini-transcribe`) y se guarda en Airtable con el audio adjunto.
 - Cada celular genera un código anónimo (`P-XXXX`, en `localStorage`) que se repite en todas sus respuestas, para agruparlas por persona.
-- Tabla `Respuestas` en Airtable: `Participante`, `Estación` (Misión 1 · Mesa de las herramientas), `Pregunta`, `Objeto` (Machete · Sombrero · Botas · Rastrillo), `Audio` (adjunto), `Transcripción`, `Duración (s)`, `Fecha`.
+- Tabla `Respuestas` en Airtable: `Participante`, `Estación` (Misión 1 · Mesa de las herramientas), `Pregunta`, `Objeto` (reservado; hoy no se rellena), `Audio` (adjunto), `Transcripción`, `Duración (s)`, `Fecha`.
 - Variables: `AIRTABLE_TOKEN` (con `data.records:write` y acceso a la base) y `AIRTABLE_BASE_ID`. Si faltan, el endpoint responde `missing_airtable_config`.
 - La grabación requiere HTTPS (o `localhost`): en producción funciona directamente; en local, desde el celular, hace falta un túnel HTTPS.
 

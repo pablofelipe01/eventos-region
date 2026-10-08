@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * Mesa de las herramientas: elegir un objeto y contar una historia (pantalla 9
- * del diseño), con el mismo grabador de la misión.
+ * Mesa de las herramientas (pantalla 9 del diseño): la persona elige un objeto
+ * en la mesa física y cuenta su historia con el mismo grabador de la misión.
+ * La ilustración es de referencia; "¡Vamos!" empieza a grabar.
  */
 import { useState } from "react";
-import { TABLE_QUESTION, type AlmaObject } from "@/lib/alma/config";
+import { TABLE_QUESTION } from "@/lib/alma/config";
 import { SproutIcon } from "./icons";
 import { Confetti } from "./illustrations";
 import { ObjectTable } from "./object-table";
@@ -13,9 +14,7 @@ import { Recorder } from "./recorder";
 import { AlmaShell } from "./shell";
 
 export function AlmaTable() {
-  const [selected, setSelected] = useState<AlmaObject | null>(null);
   const [done, setDone] = useState(false);
-  const [recording, setRecording] = useState(false);
 
   if (done) {
     return (
@@ -39,9 +38,7 @@ export function AlmaTable() {
         <Recorder
           station="Mesa de las herramientas"
           question={TABLE_QUESTION}
-          object={selected ?? undefined}
-          trigger={{ label: "¡Vamos!", disabled: !selected }}
-          onStart={() => setRecording(true)}
+          trigger={{ label: "¡Vamos!" }}
           onDone={() => setDone(true)}
         />
       }
@@ -52,7 +49,7 @@ export function AlmaTable() {
         </h1>
         <div className="mt-6 w-full">
           <div className="flex justify-center">
-            <ObjectTable selected={selected} onSelect={setSelected} disabled={recording} />
+            <ObjectTable />
           </div>
         </div>
         <p className="mt-6 max-w-sm text-[15px] leading-snug text-[#2f4a3c] sm:text-base">

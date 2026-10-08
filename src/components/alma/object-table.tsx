@@ -2,7 +2,7 @@
 
 /**
  * Mesa de las herramientas: los cuatro objetos ilustrados sobre una mesa de
- * madera. Cada objeto es un botón de radio; el elegido se levanta y se marca.
+ * madera. Es una imagen de referencia; la herramienta real se elige en la mesa física.
  */
 import Image from "next/image";
 import { OBJECTS, type AlmaObject } from "@/lib/alma/config";
@@ -55,65 +55,32 @@ function Tabletop() {
   );
 }
 
-export function ObjectTable({
-  selected,
-  onSelect,
-  disabled = false,
-}: {
-  selected: AlmaObject | null;
-  onSelect: (object: AlmaObject) => void;
-  /** Mientras se graba no se puede cambiar de objeto. */
-  disabled?: boolean;
-}) {
+export function ObjectTable() {
   return (
-    <div className="w-full max-w-sm sm:max-w-md" role="radiogroup" aria-label="Elige un objeto de la mesa">
+    <figure className="w-full max-w-sm sm:max-w-md" aria-label="Herramientas sobre la mesa: machete, sombrero, botas y rastrillo">
       <div className="relative">
         {/* Objetos: apoyados sobre el tablero (solapan su borde superior). */}
         <div className="relative z-10 grid grid-cols-4 items-end gap-1 px-3 sm:gap-3 sm:px-4">
-          {OBJECTS.map((name) => {
-            const active = selected === name;
-            const dimmed = disabled && !active;
-            return (
-              <button
-                key={name}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                disabled={disabled}
-                onClick={() => onSelect(name)}
-                className={`group relative flex min-w-0 flex-col items-center transition-transform duration-200 focus-visible:outline-none ${
-                  active ? "-translate-y-2 scale-[1.08]" : "hover:-translate-y-1"
-                } ${dimmed ? "opacity-40" : ""}`}
-              >
-                {/* halo de selección */}
-                <span
-                  className={`absolute top-1/2 left-1/2 -z-10 size-[88%] -translate-x-1/2 -translate-y-[55%] rounded-full bg-[#fff6dc] blur-md transition-opacity ${
-                    active ? "opacity-90" : "opacity-0 group-focus-visible:opacity-60"
-                  }`}
-                  aria-hidden
-                />
-                <Image
-                  src={IMAGES[name]}
-                  alt={name}
-                  width={512}
-                  height={512}
-                  priority
-                  className="h-auto w-full drop-shadow-[0_6px_6px_rgba(60,35,10,0.35)]"
-                />
-                {/* sombra de contacto sobre la mesa */}
-                <span
-                  className="mt-[-6%] block h-2 w-[70%] rounded-full bg-[#4a2c12]/30 blur-[3px]"
-                  aria-hidden
-                />
-              </button>
-            );
-          })}
+          {OBJECTS.map((name) => (
+            <div key={name} className="flex min-w-0 flex-col items-center">
+              <Image
+                src={IMAGES[name]}
+                alt={name}
+                width={512}
+                height={512}
+                priority
+                className="h-auto w-full drop-shadow-[0_6px_6px_rgba(60,35,10,0.35)]"
+              />
+              {/* sombra de contacto sobre la mesa */}
+              <span className="mt-[-6%] block h-2 w-[70%] rounded-full bg-[#4a2c12]/30 blur-[3px]" aria-hidden />
+            </div>
+          ))}
         </div>
         {/* Tablero */}
         <div className="relative -mt-7 h-24 sm:-mt-9 sm:h-28">
           <Tabletop />
         </div>
       </div>
-    </div>
+    </figure>
   );
 }
