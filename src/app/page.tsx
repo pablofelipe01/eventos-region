@@ -3,7 +3,7 @@ import { AlmaWelcome } from "@/components/alma/welcome";
 
 export const metadata: Metadata = {
   title: "Alma — Las Moras",
-  description: "Alma quiere conocerte: cuéntanos tus historias para construir un futuro mejor para Las Moras.",
+  description: "Alma quiere conocerte: cuéntanos tus historias para tejer un futuro mejor en las moras.",
 };
 
 export const viewport: Viewport = {
