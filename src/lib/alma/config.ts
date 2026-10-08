@@ -15,7 +15,7 @@ export const MISSION_QUESTIONS = [
   },
 ] as const;
 
-export const OBJECTS = ["Machete", "Sombrero", "Botas", "Frutos"] as const;
+export const OBJECTS = ["Machete", "Sombrero", "Botas", "Rastrillo"] as const;
 export type AlmaObject = (typeof OBJECTS)[number];
 
 export const TABLE_QUESTION =
