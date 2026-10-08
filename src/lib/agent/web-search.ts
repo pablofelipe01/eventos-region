@@ -1,103 +1,134 @@
 import "server-only";
 /**
- * Búsqueda web detrás de una interfaz pequeña para poder cambiar de proveedor
- * (Tavily hoy; Brave, Exa, Perplexity, etc. mañana) sin tocar las herramientas.
+ * Búsqueda web con las herramientas NATIVAS de cada proveedor (sin APIs ni
+ * claves de terceros):
+ *
+ * - Chat con Claude  → `anthropic.tools.webSearch_20260318` (server tool de
+ *   Anthropic; Claude busca, filtra y cita las fuentes).
+ * - Chat con OpenAI  → `openai.tools.webSearch` (herramienta `web_search` de la
+ *   Responses API; cita con anotaciones `url_citation`).
+ * - Voz (Realtime API, que no tiene búsqueda integrada) → `runVoiceWebSearch`:
+ *   un `generateText` corto, no streaming, con OpenAI + `web_search`, que
+ *   devuelve una respuesta breve y las URLs de las fuentes. Solo necesita
+ *   OPENAI_API_KEY.
  */
-import { LIMITS } from "./config";
-import type { WebSearchInput, WebSearchOutput, WebSearchResult } from "./tool-schemas";
+import { anthropic } from "@ai-sdk/anthropic";
+import { createOpenAI, openai } from "@ai-sdk/openai";
+import { generateText } from "ai";
+import { LIMITS, WEB_SEARCH, type ProviderId } from "./config";
+import type { WebSearchInput, WebSearchOutput, WebSource } from "./tool-schemas";
 import { errorMessage } from "../redact";
 
-export interface WebSearchProvider {
-  readonly name: string;
-  search(query: string, options: { maxResults: number; signal?: AbortSignal }): Promise<{
-    answer?: string;
-    results: WebSearchResult[];
-  }>;
-}
-
-class TavilySearchProvider implements WebSearchProvider {
-  readonly name = "tavily";
-  constructor(private readonly apiKey: string) {}
-
-  async search(query: string, { maxResults, signal }: { maxResults: number; signal?: AbortSignal }) {
-    const response = await fetch("https://api.tavily.com/search", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query,
-        max_results: maxResults,
-        search_depth: "basic",
-        include_answer: "basic",
-      }),
-      signal,
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      let detail = "";
-      try {
-        const body = (await response.json()) as { detail?: { error?: string } };
-        detail = body.detail?.error ?? "";
-      } catch {
-        // cuerpo no JSON: ignorar
-      }
-      throw new Error(`Tavily respondió ${response.status}${detail ? `: ${detail}` : ""}`);
-    }
-
-    const data = (await response.json()) as {
-      answer?: string | null;
-      results?: Array<{ title?: string; url?: string; content?: string }>;
-    };
-
-    return {
-      answer: data.answer ?? undefined,
-      results: (data.results ?? [])
-        .filter((r): r is { title?: string; url: string; content?: string } => typeof r.url === "string")
-        .map((r) => ({
-          title: r.title?.trim() || r.url,
-          url: r.url,
-          snippet: (r.content ?? "").slice(0, 600),
-        })),
-    };
+/**
+ * Herramienta nativa de búsqueda web para el chat de texto. Se registra con la
+ * clave `web_search` en el ToolSet. Las fábricas de herramientas no leen
+ * claves: solo describen la herramienta que ejecuta el proveedor.
+ */
+export function createNativeWebSearchTool(provider: ProviderId) {
+  switch (provider) {
+    case "anthropic":
+      // Versión recomendada por @ai-sdk/anthropic (filtrado dinámico de resultados).
+      return anthropic.tools.webSearch_20260318({
+        maxUses: WEB_SEARCH.anthropicMaxUses,
+        userLocation: WEB_SEARCH.userLocation,
+        responseInclusion: "excluded",
+      });
+    case "openai":
+      return openai.tools.webSearch({
+        searchContextSize: WEB_SEARCH.openaiSearchContextSize,
+        userLocation: WEB_SEARCH.userLocation,
+      });
   }
 }
 
-/** Devuelve el proveedor configurado o `null` si no hay ninguno. */
-export function getWebSearchProvider(): WebSearchProvider | null {
-  const tavilyKey = process.env.TAVILY_API_KEY?.trim();
-  if (tavilyKey) return new TavilySearchProvider(tavilyKey);
-  // TODO: añadir aquí otros proveedores (p. ej. BRAVE_SEARCH_API_KEY).
-  return null;
+const VOICE_SEARCH_INSTRUCTIONS = `Eres el módulo de búsqueda web de un asistente de voz en español.
+Busca en la web y responde la consulta con datos verificados y actuales.
+- Responde en español, en 2 a 5 frases claras (máximo ~120 palabras), aptas para leerse en voz alta.
+- No incluyas URLs, markdown ni listas en la respuesta; las fuentes se envían aparte.
+- Si los resultados no son concluyentes, dilo.`;
+
+function hostname(url: string): string | undefined {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return undefined;
+  }
 }
 
-export async function runWebSearch(
+/** Ejecuta la búsqueda web de la voz. Nunca lanza. */
+export async function runVoiceWebSearch(
   input: WebSearchInput,
   signal?: AbortSignal,
 ): Promise<WebSearchOutput> {
-  const provider = getWebSearchProvider();
-  if (!provider) {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
     return {
       ok: false,
-      configured: false,
-      code: "web_search_not_configured",
+      code: "missing_api_key",
       error:
-        "La búsqueda web no está configurada (falta TAVILY_API_KEY en el servidor). Responde con lo que sabes, indica que no pudiste verificarlo en la web y sugiere configurarla.",
+        "La búsqueda web por voz no está disponible: falta OPENAI_API_KEY en el servidor. Responde con lo que sabes e indica que no pudiste verificarlo en la web.",
     };
   }
 
+  const timeout = AbortSignal.timeout(WEB_SEARCH.voiceTimeoutMs);
+  const abortSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+
   try {
-    const maxResults = Math.min(input.maxResults ?? LIMITS.webSearchResults, 8);
-    const { answer, results } = await provider.search(input.query, { maxResults, signal });
-    return { ok: true, provider: provider.name, query: input.query, answer, results };
+    const provider = createOpenAI({ apiKey });
+    const result = await generateText({
+      model: provider.responses(WEB_SEARCH.voiceModel),
+      instructions: VOICE_SEARCH_INSTRUCTIONS,
+      prompt: input.query,
+      tools: {
+        web_search: provider.tools.webSearch({
+          searchContextSize: WEB_SEARCH.voiceSearchContextSize,
+          userLocation: WEB_SEARCH.userLocation,
+        }),
+      },
+      toolChoice: { type: "tool", toolName: "web_search" },
+      maxOutputTokens: WEB_SEARCH.voiceMaxOutputTokens,
+      providerOptions: { openai: { reasoningEffort: WEB_SEARCH.voiceReasoningEffort } },
+      maxRetries: 1,
+      abortSignal,
+    });
+
+    // Fuentes: citas (`url_citation` → sources) + fuentes consultadas por la herramienta.
+    const byUrl = new Map<string, WebSource>();
+    for (const source of result.sources) {
+      if (source.sourceType === "url" && !byUrl.has(source.url)) {
+        byUrl.set(source.url, { url: source.url, title: source.title ?? hostname(source.url) });
+      }
+    }
+    for (const toolResult of result.toolResults) {
+      if (toolResult.toolName !== "web_search") continue;
+      const output = toolResult.output as { sources?: Array<{ type: string; url?: string }> } | undefined;
+      for (const source of output?.sources ?? []) {
+        if (source.type === "url" && source.url && !byUrl.has(source.url)) {
+          byUrl.set(source.url, { url: source.url, title: hostname(source.url) });
+        }
+      }
+    }
+
+    const answer = result.text.trim();
+    if (!answer) {
+      return { ok: false, code: "web_search_empty", error: "La búsqueda web no devolvió resultados útiles." };
+    }
+    return {
+      ok: true,
+      query: input.query,
+      answer,
+      sources: [...byUrl.values()].slice(0, LIMITS.voiceWebSearchSources),
+      model: WEB_SEARCH.voiceModel,
+    };
   } catch (error) {
-    console.error("[webSearch] error", error);
+    console.error("[webSearch:voz] error", error);
+    const timedOut = timeout.aborted && !signal?.aborted;
     return {
       ok: false,
-      code: "web_search_failed",
-      error: `La búsqueda web falló: ${errorMessage(error)}`,
+      code: timedOut ? "web_search_timeout" : "web_search_failed",
+      error: timedOut
+        ? "La búsqueda web tardó demasiado. Responde con lo que sabes o propón intentarlo de nuevo."
+        : `La búsqueda web falló: ${errorMessage(error)}`,
     };
   }
 }

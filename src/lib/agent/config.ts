@@ -40,10 +40,34 @@ export const IMAGE_MODEL = {
   outputFormat: "webp" as const,
 };
 
+/**
+ * Búsqueda web nativa de cada proveedor (sin APIs de terceros).
+ * - Chat con Claude: herramienta `web_search` de Anthropic (`anthropic.tools.webSearch_20260318`).
+ * - Chat con OpenAI: herramienta `web_search` de la Responses API (`openai.tools.webSearch`).
+ * - Voz: la Realtime API no tiene búsqueda integrada; la función `webSearch` llama a
+ *   `/api/web-search`, que hace un `generateText` corto con OpenAI + `web_search`.
+ */
+export const WEB_SEARCH = {
+  /** Máximo de búsquedas de Claude por turno. */
+  anthropicMaxUses: 5,
+  /** Contexto de búsqueda de OpenAI en el chat: "low" | "medium" | "high". */
+  openaiSearchContextSize: "medium" as const,
+  /** Ubicación aproximada para resultados locales (Colombia). */
+  userLocation: { type: "approximate" as const, country: "CO", timezone: "America/Bogota" },
+  /** Modelo rápido y barato para la búsqueda de la voz (`/api/web-search`). */
+  voiceModel: "gpt-6-luna",
+  voiceSearchContextSize: "low" as const,
+  voiceReasoningEffort: "low" as const,
+  voiceMaxOutputTokens: 700,
+  voiceTimeoutMs: 45_000,
+};
+
 /** Configuración de voz en tiempo real (OpenAI Realtime API, WebRTC). */
 export const REALTIME = {
-  /** Modelo de voz. Alternativas: "gpt-realtime-2.1", "gpt-realtime-mini". */
-  model: "gpt-realtime",
+  /** Modelo de voz (razonamiento configurable, mejor manejo de interrupciones). Alternativa más barata: "gpt-realtime-2.1-mini". */
+  model: "gpt-realtime-2.1",
+  /** Esfuerzo de razonamiento: "low" mantiene la latencia de conversación baja. */
+  reasoningEffort: "low" as const,
   /** Voces recomendadas por OpenAI: "marin" o "cedar". */
   voice: "marin",
   /** Transcripción de lo que dice el usuario (se muestra en el chat). */
@@ -64,6 +88,6 @@ export const MAX_AGENT_STEPS = 10;
 export const LIMITS = {
   /** Caracteres máximos del contexto de texto que se pasa a la sesión de voz. */
   voiceContextChars: 4000,
-  /** Resultados máximos de búsqueda web. */
-  webSearchResults: 5,
+  /** Fuentes máximas que devuelve la búsqueda web de la voz. */
+  voiceWebSearchSources: 6,
 } as const;

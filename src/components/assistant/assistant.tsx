@@ -1,6 +1,6 @@
 "use client";
 
-import { useChat } from "@ai-sdk/react";
+import { Chat, useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { collectArtifacts } from "@/lib/agent/artifacts";
@@ -11,7 +11,8 @@ import type { ArtifactToolOutput } from "@/lib/agent/tool-schemas";
 import type { RegionUIMessage } from "@/lib/agent/types";
 import { ArtifactPanel } from "./artifact-panel";
 import { MessageView, TypingDots } from "./message-view";
-import { useRealtimeVoice, type VoiceStatus } from "./use-realtime-voice";
+import { useRealtimeVoice } from "./use-realtime-voice";
+import { VoicePanel } from "./voice-panel";
 
 const transport = new DefaultChatTransport<RegionUIMessage>({
   api: "/api/chat",
@@ -26,16 +27,6 @@ const SUGGESTIONS = [
   "Busca las noticias más recientes sobre IA en Colombia y resúmelas",
   "Escríbeme un script en Python que lea un CSV y calcule promedios por columna",
 ];
-
-const VOICE_LABELS: Record<VoiceStatus, string> = {
-  idle: "",
-  connecting: "Conectando voz…",
-  listening: "Escuchando — habla cuando quieras",
-  "user-speaking": "Te escucho…",
-  thinking: "Pensando…",
-  speaking: "Región está hablando",
-  tool: "Usando una herramienta…",
-};
 
 /** Último artefacto creado/actualizado (para abrir el panel automáticamente). */
 function lastArtifactActivity(messages: RegionUIMessage[]): { id: string; key: string } | null {
@@ -83,17 +74,16 @@ export function Assistant() {
     };
   }, []);
 
+  // Una sola instancia de Chat: es el hilo compartido por texto y voz.
+  // id fijo: si no, se llamaría a generateId() (Math.random) durante el prerender,
+  // algo que Cache Components no permite. Solo hay una conversación por pestaña.
+  const [chat] = useState(() => new Chat<RegionUIMessage>({ id: "region", transport }));
   const { messages, sendMessage, status, error, stop, setMessages, clearError, regenerate } =
-    // id fijo: si no, useChat llama a generateId() (Math.random) durante el prerender,
-    // algo que Cache Components no permite. Solo hay una conversación por pestaña.
-    useChat<RegionUIMessage>({ id: "region", transport });
+    useChat<RegionUIMessage>({ chat });
 
-  const messagesRef = useRef(messages);
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
-  const getMessages = useCallback(() => messagesRef.current, []);
-
+  // La voz lee y escribe la misma lista de mensajes de forma síncrona
+  // (chat.messages siempre está al día, sin esperar a un render).
+  const getMessages = useCallback(() => chat.messages, [chat]);
   const voice = useRealtimeVoice({ getMessages, setMessages });
 
   /* ---------------- Artefactos ---------------- */
@@ -259,23 +249,7 @@ export function Assistant() {
                 </button>
               </div>
             )}
-            {voice.isActive && (
-              <div className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400" aria-live="polite">
-                <span
-                  className={`size-2 rounded-full ${
-                    voice.status === "speaking"
-                      ? "animate-pulse bg-sky-500"
-                      : voice.status === "user-speaking"
-                        ? "animate-pulse bg-emerald-500"
-                        : voice.status === "connecting"
-                          ? "animate-pulse bg-zinc-400"
-                          : "bg-emerald-500"
-                  }`}
-                />
-                {VOICE_LABELS[voice.status]}
-                <span className="text-zinc-400">· lo que escribas también va a la conversación de voz</span>
-              </div>
-            )}
+            {voice.isActive && <VoicePanel voice={voice} />}
 
             <form
               className="flex items-end gap-2 rounded-2xl border border-zinc-200 bg-white p-2 shadow-sm focus-within:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900"
@@ -291,16 +265,17 @@ export function Assistant() {
                 aria-pressed={voice.isActive}
                 aria-label={voice.isActive ? "Terminar conversación de voz" : "Hablar con Región"}
                 title={voice.isActive ? "Terminar voz" : "Hablar (voz en tiempo real)"}
-                className={`relative grid size-10 shrink-0 place-items-center rounded-xl transition disabled:opacity-40 ${
+                className={`relative flex h-10 min-w-10 shrink-0 items-center justify-center gap-1.5 rounded-xl px-2.5 transition disabled:opacity-40 ${
                   voice.isActive
                     ? "bg-red-500 text-white hover:bg-red-600"
-                    : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                    : "bg-gradient-to-br from-emerald-500 to-sky-600 text-white hover:opacity-90"
                 }`}
               >
                 {voice.isActive && voice.status !== "connecting" && (
                   <span className="absolute inset-0 animate-ping rounded-xl bg-red-400 opacity-30" />
                 )}
                 <MicIcon className="relative size-5" />
+                {!voice.isActive && <span className="relative hidden text-sm font-medium sm:inline">Hablar</span>}
               </button>
               <textarea
                 value={input}
@@ -349,6 +324,12 @@ export function Assistant() {
             onSelect={openArtifact}
             onClose={closePanel}
           />
+          {/* En móvil el panel cubre el chat: mantenemos visibles el estado y los controles de voz. */}
+          {voice.isActive && (
+            <div className="fixed inset-x-3 bottom-3 z-40 md:hidden">
+              <VoicePanel voice={voice} compact />
+            </div>
+          )}
         </aside>
       )}
     </div>

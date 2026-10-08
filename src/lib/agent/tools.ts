@@ -1,12 +1,14 @@
 import "server-only";
 /**
  * Implementación de servidor de las herramientas de "Región".
- * - `createChatTools`: ToolSet para `streamText` (chat de texto).
+ * - `createChatTools`: ToolSet para `streamText` (chat de texto), con la
+ *   búsqueda web nativa del proveedor elegido.
  * - `runServerTool`: ejecuta las herramientas de servidor pedidas por la voz
- *   (`/api/tools`), con las mismas funciones que usa el chat.
+ *   (`/api/tools`, `/api/web-search`), con las mismas funciones que usa el chat.
  */
 import { tool, type JSONValue } from "ai";
 import { ArtifactRegistry } from "./artifacts";
+import type { ProviderId } from "./config";
 import { runGenerateImage } from "./image";
 import {
   TOOL_DESCRIPTIONS,
@@ -14,7 +16,7 @@ import {
   type GenerateImageOutput,
   type ServerExecutedToolName,
 } from "./tool-schemas";
-import { runWebSearch } from "./web-search";
+import { createNativeWebSearchTool, runVoiceWebSearch } from "./web-search";
 
 function imageOutputForModel(output: GenerateImageOutput): JSONValue {
   if (!output.ok) return { ok: false, error: output.error, code: output.code ?? null };
@@ -31,7 +33,7 @@ function imageOutputForModel(output: GenerateImageOutput): JSONValue {
  * artefactos ya existentes en la conversación (derivados del historial), para
  * que `updateArtifact` pueda validar el id.
  */
-export function createChatTools(registry: ArtifactRegistry) {
+export function createChatTools(registry: ArtifactRegistry, provider: ProviderId) {
   return {
     createArtifact: tool({
       description: TOOL_DESCRIPTIONS.createArtifact,
@@ -50,11 +52,8 @@ export function createChatTools(registry: ArtifactRegistry) {
       // El modelo no necesita (ni debe recibir) el base64 de la imagen.
       toModelOutput: ({ output }) => ({ type: "json", value: imageOutputForModel(output) }),
     }),
-    webSearch: tool({
-      description: TOOL_DESCRIPTIONS.webSearch,
-      inputSchema: TOOL_INPUT_SCHEMAS.webSearch,
-      execute: async (input, { abortSignal }) => runWebSearch(input, abortSignal),
-    }),
+    // Búsqueda web nativa del proveedor (la ejecuta Anthropic u OpenAI, no este servidor).
+    web_search: createNativeWebSearchTool(provider),
     // Roadmap (no implementadas en v1): ver ./roadmap.ts → runCode, saveFile, remember.
   };
 }
@@ -86,7 +85,7 @@ export async function runServerTool(
     case "webSearch": {
       const parsed = TOOL_INPUT_SCHEMAS.webSearch.safeParse(rawArgs);
       if (!parsed.success) return invalidArguments(name, parsed.error);
-      return runWebSearch(parsed.data, signal);
+      return runVoiceWebSearch(parsed.data, signal);
     }
   }
 }

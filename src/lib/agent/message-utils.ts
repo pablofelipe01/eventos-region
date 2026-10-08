@@ -9,14 +9,29 @@ import type { RegionUIMessage, RegionUIPart } from "./types";
  * - quita el base64 de las imágenes generadas (el modelo no lo necesita y
  *   evita superar el límite de 4,5 MB por petición de Vercel),
  * - elimina partes de texto vacías (p. ej. transcripciones de voz pendientes),
- *   que algunos proveedores rechazan.
+ *   que algunos proveedores rechazan,
+ * - elimina herramientas sin terminar (stream detenido o herramienta de voz en
+ *   curso) y el contenido cifrado de las búsquedas nativas (el servidor las
+ *   resume como nota; no hace falta reenviarlo).
  */
+const TERMINAL_TOOL_STATES = new Set(["output-available", "output-error", "output-denied"]);
+
 export function sanitizeMessagesForRequest(messages: RegionUIMessage[]): RegionUIMessage[] {
   const result: RegionUIMessage[] = [];
   for (const message of messages) {
     const parts = message.parts
       .filter((part) => !(part.type === "text" && part.text.trim() === ""))
+      .filter((part) => {
+        const isTool = part.type.startsWith("tool-") || part.type === "dynamic-tool";
+        return !isTool || TERMINAL_TOOL_STATES.has((part as { state?: string }).state ?? "");
+      })
       .map((part): RegionUIPart => {
+        if (part.type === "tool-web_search" && part.state === "output-available" && Array.isArray(part.output)) {
+          return {
+            ...part,
+            output: part.output.map((r) => ({ type: r.type, url: r.url, title: r.title })),
+          };
+        }
         if (
           part.type === "tool-generateImage" &&
           part.state === "output-available" &&
@@ -154,6 +169,24 @@ export const voiceMessages = {
       }),
       (message) => setText(message, text, mode === "delta"),
     );
+  },
+
+  /**
+   * Cierra la respuesta de voz: marca el texto como terminado y, si el usuario
+   * la interrumpió (barge-in), lo indica en los metadatos.
+   */
+  finishAssistant(messages: RegionUIMessage[], responseId: string, interrupted: boolean): RegionUIMessage[] {
+    const id = voiceMessages.assistantId(responseId);
+    const index = messages.findIndex((m) => m.id === id);
+    if (index === -1) return messages;
+    const message = messages[index];
+    const next = messages.slice();
+    next[index] = {
+      ...message,
+      parts: message.parts.map((p) => (p.type === "text" ? { ...p, state: "done" as const } : p)),
+      metadata: { ...message.metadata, source: "voice", ...(interrupted ? { interrupted: true } : {}) },
+    };
+    return next;
   },
 
   /** Inserta o reemplaza una parte de herramienta (por toolCallId). */

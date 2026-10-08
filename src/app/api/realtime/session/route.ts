@@ -13,6 +13,13 @@ export const maxDuration = 30;
  *
  * Docs: https://platform.openai.com/docs/api-reference/realtime-sessions/create-realtime-client-secret
  *       https://platform.openai.com/docs/guides/realtime-webrtc
+ *       https://platform.openai.com/docs/guides/realtime-conversations (VAD, interrupciones, function calling)
+ *
+ * Full-duplex: el micrófono sigue abierto mientras el asistente habla. Con
+ * `server_vad` + `interrupt_response: true`, si el usuario habla encima, el
+ * servidor cancela la respuesta en curso, vacía su búfer de audio (WebRTC) y
+ * trunca lo no reproducido; el cliente además silencia la reproducción local
+ * al recibir `input_audio_buffer.speech_started`.
  */
 export async function POST(request: Request) {
   const forbidden = rejectCrossOrigin(request);
@@ -44,6 +51,8 @@ export async function POST(request: Request) {
       type: "realtime",
       model: REALTIME.model,
       instructions: buildVoiceInstructions(context),
+      // gpt-realtime-2.x razona; "low" mantiene la conversación ágil.
+      reasoning: { effort: REALTIME.reasoningEffort },
       output_modalities: ["audio"],
       audio: {
         input: {
@@ -65,6 +74,8 @@ export async function POST(request: Request) {
       },
       tools: getRealtimeToolDefinitions(),
       tool_choice: "auto",
+      // Permite, p. ej., crear un artefacto y generar una imagen en la misma respuesta.
+      parallel_tool_calls: true,
     },
   };
 

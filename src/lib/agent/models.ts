@@ -27,7 +27,9 @@ export function getPublicAgentConfig() {
     features: {
       voice: hasProviderKey("openai"),
       images: hasProviderKey("openai"),
-      webSearch: Boolean(process.env.TAVILY_API_KEY?.trim()),
+      // La búsqueda web del chat es nativa de cada proveedor (disponible si su
+      // clave está configurada); la de la voz usa OpenAI.
+      voiceWebSearch: hasProviderKey("openai"),
     },
   };
 }

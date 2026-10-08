@@ -1,7 +1,14 @@
 "use client";
 
 import { isToolUIPart } from "ai";
-import { TOOL_LABELS, isRegionToolName } from "@/lib/agent/tool-schemas";
+import {
+  collectMessageSources,
+  hostnameOf,
+  isNativeWebSearchPart,
+  nativeWebSearchQuery,
+  nativeWebSearchSources,
+} from "@/lib/agent/sources";
+import { TOOL_LABELS, isRegionToolName, type WebSource } from "@/lib/agent/tool-schemas";
 import type { RegionUIMessage, RegionUIPart } from "@/lib/agent/types";
 import { Markdown } from "./markdown";
 
@@ -36,7 +43,64 @@ function Chip({
   );
 }
 
+function SourceLinks({ sources, className = "" }: { sources: WebSource[]; className?: string }) {
+  return (
+    <ul className={`flex flex-wrap gap-1.5 ${className}`}>
+      {sources.map((s, i) => (
+        <li key={s.url} className="max-w-full">
+          <a
+            href={s.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={s.url}
+            className="inline-flex max-w-[16rem] items-center gap-1 truncate rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-xs text-zinc-700 hover:border-emerald-300 hover:text-emerald-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:text-emerald-400"
+          >
+            <span className="text-zinc-400">{i + 1}</span>
+            <span className="truncate">{s.title?.trim() || hostnameOf(s.url)}</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Búsqueda web nativa del proveedor (chat de texto). */
+function NativeWebSearchView({
+  state,
+  input,
+  output,
+  errorText,
+}: {
+  state: string;
+  input?: unknown;
+  output?: unknown;
+  errorText?: string;
+}) {
+  if (state === "output-error") return <Chip tone="error">{`Búsqueda web: ${errorText ?? "error"}`}</Chip>;
+  if (state !== "output-available") return <Chip tone="running">Buscando en la web…</Chip>;
+  const query = nativeWebSearchQuery(input, output);
+  const sources = nativeWebSearchSources(output);
+  return (
+    <details className="max-w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800">
+      <summary className="cursor-pointer list-none text-xs font-medium text-zinc-600 dark:text-zinc-400">
+        🔎 Búsqueda web{query ? `: "${query}"` : ""} · {sources.length} fuentes consultadas
+      </summary>
+      {sources.length > 0 && <SourceLinks sources={sources} className="mt-2" />}
+    </details>
+  );
+}
+
 function ToolPartView({ part, onOpenArtifact }: { part: ToolPart; onOpenArtifact: (id: string) => void }) {
+  if (isNativeWebSearchPart(part)) {
+    const loose = part as unknown as { state: string; input?: unknown; output?: unknown; errorText?: string };
+    return <NativeWebSearchView {...loose} />;
+  }
+  if (part.type === "dynamic-tool") {
+    // Herramientas internas del proveedor (p. ej. code_execution de Claude al filtrar resultados).
+    return part.state === "output-available" || part.state === "output-error" ? null : (
+      <Chip tone="running">Procesando resultados…</Chip>
+    );
+  }
   const name = part.type.slice("tool-".length);
   if (!isRegionToolName(name)) return null;
   const labels = TOOL_LABELS[name];
@@ -77,28 +141,15 @@ function ToolPartView({ part, onOpenArtifact }: { part: ToolPart; onOpenArtifact
       );
     }
     case "tool-webSearch": {
+      // Búsqueda de la voz: respuesta breve + fuentes (los enlaces van al pie del mensaje).
       const output = part.output;
-      if (!output.ok) return <Chip tone="error">{output.error}</Chip>;
+      if (!output.ok) return <Chip tone="error">{`${labels.done}: ${output.error}`}</Chip>;
       return (
-        <details className="group max-w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800">
+        <details className="max-w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800">
           <summary className="cursor-pointer list-none text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            🔎 {`${labels.done}: "${output.query}" · ${output.results.length} resultados`}
+            🔎 {`${labels.done}: "${output.query}" · ${output.sources.length} fuentes`}
           </summary>
-          <ul className="mt-2 space-y-2">
-            {output.results.map((r) => (
-              <li key={r.url}>
-                <a
-                  href={r.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-emerald-700 hover:underline dark:text-emerald-400"
-                >
-                  {r.title}
-                </a>
-                <p className="line-clamp-2 text-xs text-zinc-500">{r.snippet}</p>
-              </li>
-            ))}
-          </ul>
+          <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">{output.answer}</p>
         </details>
       );
     }
@@ -118,6 +169,7 @@ export function MessageView({
 }) {
   const isUser = message.role === "user";
   const fromVoice = message.metadata?.source === "voice";
+  const { cited } = isUser ? { cited: [] } : collectMessageSources(message.parts);
 
   return (
     <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
@@ -157,24 +209,25 @@ export function MessageView({
               </details>
             );
           }
-          if (part.type === "source-url") {
-            return (
-              <a
-                key={key}
-                href={part.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-emerald-700 hover:underline dark:text-emerald-400"
-              >
-                {part.title ?? part.url}
-              </a>
-            );
+          if (part.type === "source-url" || part.type === "source-document") {
+            return null; // se agrupan en "Fuentes" al pie del mensaje
           }
           if (isToolUIPart(part)) {
             return <ToolPartView key={key} part={part as ToolPart} onOpenArtifact={onOpenArtifact} />;
           }
           return null;
         })}
+        {cited.length > 0 && (
+          <div className="flex max-w-full flex-col gap-1">
+            <span className="text-[11px] font-medium text-zinc-500">Fuentes</span>
+            <SourceLinks sources={cited} />
+          </div>
+        )}
+        {fromVoice && message.metadata?.interrupted && (
+          <span className="text-[11px] text-zinc-400" title="El usuario habló encima de la respuesta">
+            ⤷ interrumpido
+          </span>
+        )}
         {isStreaming && message.parts.length === 0 && <TypingDots />}
       </div>
     </div>

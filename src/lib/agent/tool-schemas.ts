@@ -3,10 +3,13 @@
  *
  * Un único lugar para nombres, descripciones, esquemas de entrada (zod) y
  * tipos de salida. Lo usan:
- *  - el chat de texto (`tools.ts` → `streamText`),
- *  - la sesión de voz (definiciones de function tools para la Realtime API),
+ *  - el chat de texto (`tools.ts` → `streamText`): createArtifact, updateArtifact
+ *    y generateImage. La búsqueda web del chat es la herramienta NATIVA del
+ *    proveedor (`web_search`), definida en `web-search.ts`.
+ *  - la sesión de voz (function tools de la Realtime API): las cuatro, incluida
+ *    `webSearch`, que se ejecuta en `/api/web-search`.
  *  - el cliente (render de chips y del panel de artefactos),
- *  - `/api/tools` (validación de argumentos que llegan desde la voz).
+ *  - `/api/tools` y `/api/web-search` (validación de argumentos de la voz).
  *
  * No contiene secretos ni lógica de servidor: es seguro importarlo en el cliente.
  */
@@ -62,8 +65,11 @@ export const generateImageInputSchema = z.object({
 export type GenerateImageInput = z.infer<typeof generateImageInputSchema>;
 
 export const webSearchInputSchema = z.object({
-  query: z.string().min(1).max(400).describe("Consulta de búsqueda, concreta y en el idioma más útil."),
-  maxResults: z.number().int().min(1).max(8).optional().describe("Número de resultados (1-8, por defecto 5)."),
+  query: z
+    .string()
+    .min(1)
+    .max(400)
+    .describe("Pregunta o consulta concreta, con el contexto necesario (lugar, fechas)."),
 });
 export type WebSearchInput = z.infer<typeof webSearchInputSchema>;
 
@@ -96,17 +102,19 @@ export type GenerateImageOutput =
     }
   | ToolFailure;
 
-export type WebSearchResult = { title: string; url: string; snippet: string };
+export type WebSource = { url: string; title?: string };
 
+/** Resultado de la búsqueda web de la voz (`/api/web-search`). */
 export type WebSearchOutput =
   | {
       ok: true;
-      provider: string;
       query: string;
-      answer?: string;
-      results: WebSearchResult[];
+      /** Respuesta breve, pensada para leerse en voz alta. */
+      answer: string;
+      sources: WebSource[];
+      model: string;
     }
-  | (ToolFailure & { configured?: boolean });
+  | ToolFailure;
 
 /* ------------------------------------------------------------------ */
 /* Metadatos de herramientas                                           */
@@ -120,7 +128,7 @@ export const TOOL_DESCRIPTIONS = {
   generateImage:
     "Genera una imagen a partir de una descripción de texto y la muestra al usuario en el chat.",
   webSearch:
-    "Busca en la web información actual o que no sepas con certeza. Devuelve títulos, URLs y fragmentos para citar las fuentes.",
+    "Busca en la web información actual o que no sepas con certeza. Devuelve una respuesta breve y las fuentes (URLs) para citarlas.",
 } as const;
 
 export type RegionToolName = keyof typeof TOOL_DESCRIPTIONS;
@@ -132,13 +140,26 @@ export const TOOL_INPUT_SCHEMAS = {
   webSearch: webSearchInputSchema,
 } as const;
 
-/** Herramientas que la voz ejecuta en el servidor vía `/api/tools`. */
-export const SERVER_EXECUTED_TOOLS = ["generateImage", "webSearch"] as const;
-export type ServerExecutedToolName = (typeof SERVER_EXECUTED_TOOLS)[number];
+/** Herramientas de función del chat de texto (la búsqueda web es nativa del proveedor). */
+export const TEXT_FUNCTION_TOOLS = ["createArtifact", "updateArtifact", "generateImage"] as const;
+
+/**
+ * Herramientas que la voz ejecuta en el servidor y su endpoint. Las de
+ * artefactos se ejecutan en el navegador (mismo estado que el chat de texto).
+ */
+export const SERVER_TOOL_ENDPOINTS = {
+  generateImage: "/api/tools",
+  webSearch: "/api/web-search",
+} as const;
+export type ServerExecutedToolName = keyof typeof SERVER_TOOL_ENDPOINTS;
+export const SERVER_EXECUTED_TOOLS = Object.keys(SERVER_TOOL_ENDPOINTS) as ServerExecutedToolName[];
 
 export function isServerExecutedTool(name: string): name is ServerExecutedToolName {
-  return (SERVER_EXECUTED_TOOLS as readonly string[]).includes(name);
+  return Object.prototype.hasOwnProperty.call(SERVER_TOOL_ENDPOINTS, name);
 }
+
+/** Nombre de la herramienta nativa de búsqueda web en el chat de texto (ambos proveedores). */
+export const NATIVE_WEB_SEARCH_TOOL = "web_search";
 
 export function isRegionToolName(name: string): name is RegionToolName {
   return Object.prototype.hasOwnProperty.call(TOOL_DESCRIPTIONS, name);
