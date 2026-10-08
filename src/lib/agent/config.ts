@@ -1,0 +1,93 @@
+/**
+ * Configuración central del agente "Región".
+ *
+ * Cambia aquí los ids de modelo: es el único lugar donde están definidos.
+ * Este módulo no contiene secretos y se puede importar desde cliente y servidor.
+ */
+
+export const PROVIDERS = ["anthropic", "openai"] as const;
+export type ProviderId = (typeof PROVIDERS)[number];
+
+export function isProviderId(value: unknown): value is ProviderId {
+  return typeof value === "string" && (PROVIDERS as readonly string[]).includes(value);
+}
+
+/** Modelos de texto (chat) por proveedor. */
+export const CHAT_MODELS: Record<
+  ProviderId,
+  { id: string; label: string; envKey: "ANTHROPIC_API_KEY" | "OPENAI_API_KEY" }
+> = {
+  anthropic: {
+    id: "claude-sonnet-5-5",
+    label: "Claude Sonnet 5.5",
+    envKey: "ANTHROPIC_API_KEY",
+  },
+  openai: {
+    id: "gpt-6.1-sol",
+    label: "GPT-6.1 Sol",
+    envKey: "OPENAI_API_KEY",
+  },
+};
+
+/** Proveedor por defecto si `DEFAULT_PROVIDER` no está definido o es inválido. */
+export const FALLBACK_PROVIDER: ProviderId = "anthropic";
+
+/** Modelo de generación de imágenes (OpenAI). */
+export const IMAGE_MODEL = {
+  id: "gpt-image-2.5-flare",
+  size: "1024x1024" as const,
+  quality: "medium" as const,
+  outputFormat: "webp" as const,
+};
+
+/**
+ * Búsqueda web nativa de cada proveedor (sin APIs de terceros).
+ * - Chat con Claude: herramienta `web_search` de Anthropic (`anthropic.tools.webSearch_20260318`).
+ * - Chat con OpenAI: herramienta `web_search` de la Responses API (`openai.tools.webSearch`).
+ * - Voz: la Realtime API no tiene búsqueda integrada; la función `webSearch` llama a
+ *   `/api/web-search`, que hace un `generateText` corto con OpenAI + `web_search`.
+ */
+export const WEB_SEARCH = {
+  /** Máximo de búsquedas de Claude por turno. */
+  anthropicMaxUses: 5,
+  /** Contexto de búsqueda de OpenAI en el chat: "low" | "medium" | "high". */
+  openaiSearchContextSize: "medium" as const,
+  /** Ubicación aproximada para resultados locales (Colombia). */
+  userLocation: { type: "approximate" as const, country: "CO", timezone: "America/Bogota" },
+  /** Modelo rápido y barato para la búsqueda de la voz (`/api/web-search`). */
+  voiceModel: "gpt-6-luna",
+  voiceSearchContextSize: "low" as const,
+  voiceReasoningEffort: "low" as const,
+  voiceMaxOutputTokens: 700,
+  voiceTimeoutMs: 45_000,
+};
+
+/** Configuración de voz en tiempo real (OpenAI Realtime API, WebRTC). */
+export const REALTIME = {
+  /** Modelo de voz (razonamiento configurable, mejor manejo de interrupciones). Alternativa más barata: "gpt-realtime-2.1-mini". */
+  model: "gpt-realtime-2.1",
+  /** Esfuerzo de razonamiento: "low" mantiene la latencia de conversación baja. */
+  reasoningEffort: "low" as const,
+  /** Voces recomendadas por OpenAI: "marin" o "cedar". */
+  voice: "marin",
+  /** Transcripción de lo que dice el usuario (se muestra en el chat). */
+  transcriptionModel: "gpt-4o-mini-transcribe",
+  /** Idioma esperado (ISO-639-1). Mejora la precisión de la transcripción. */
+  transcriptionLanguage: "es",
+  /** Vida del client secret efímero (segundos, 10–7200). */
+  clientSecretTtlSeconds: 600,
+  /** Endpoints de OpenAI. */
+  clientSecretsUrl: "https://api.openai.com/v1/realtime/client_secrets",
+  callsUrl: "https://api.openai.com/v1/realtime/calls",
+} as const;
+
+/** Máximo de pasos (llamadas al modelo) por turno de chat con herramientas. */
+export const MAX_AGENT_STEPS = 10;
+
+/** Límites defensivos. */
+export const LIMITS = {
+  /** Caracteres máximos del contexto de texto que se pasa a la sesión de voz. */
+  voiceContextChars: 4000,
+  /** Fuentes máximas que devuelve la búsqueda web de la voz. */
+  voiceWebSearchSources: 6,
+} as const;

@@ -1,3 +1,90 @@
+# Región — asistente de IA
+
+**Región** es un asistente de IA conversacional, por texto y por voz, que ayuda a crear lo que necesites: documentos, código, pequeñas páginas web, imágenes e investigaciones con búsqueda web.
+
+## Qué hace
+
+- **Chat de texto en streaming** con selector de modelo (Claude u OpenAI). El proveedor por defecto se define con `DEFAULT_PROVIDER`. Los IDs de modelo están en un solo archivo: `src/lib/agent/config.ts`.
+- **Agente con herramientas** (hasta 10 pasos por turno):
+  - `createArtifact` / `updateArtifact`: crea y edita artefactos (documento/markdown, código, HTML) que aparecen en el panel derecho, con versiones, vista previa / código fuente, copiar y descargar. El HTML se muestra en un `iframe` con `sandbox="allow-scripts"` (sin acceso al origen de la app).
+  - `generateImage`: genera imágenes con OpenAI y las muestra en el chat (data URL). Sin `OPENAI_API_KEY` falla de forma controlada.
+  - **Búsqueda web nativa del proveedor** (sin APIs ni claves extra): con Claude, la herramienta `web_search` de Anthropic (`anthropic.tools.webSearch_20260318`, hasta 5 búsquedas por turno); con OpenAI, la herramienta `web_search` de la Responses API (`openai.tools.webSearch`). Las citas se muestran como enlaces en "Fuentes" al pie de cada respuesta.
+- **Voz en tiempo real full-duplex** (OpenAI Realtime por WebRTC, `gpt-realtime-2.1`): hablas y escuchas a la vez y puedes **interrumpir** a Región cuando quieras. Orbe con el estado en vivo (escuchando / hablas tú / habla Región / pensando / usando una herramienta), subtítulos parciales, silenciar micrófono, interrumpir y colgar.
+  - **Crea mientras hablan:** por voz funcionan `createArtifact`, `updateArtifact`, `generateImage` y `webSearch`; el panel derecho se actualiza al momento.
+  - **Un solo hilo:** transcripciones, artefactos e imágenes de la voz quedan en la misma conversación, y si vuelves a escribir, el modelo de texto recibe esos turnos como historial.
+- **Historial en el navegador** (`useChat`): no hay base de datos en v1; al recargar la página se pierde la conversación.
+
+## Puesta en marcha
+
+Requisitos: **Node.js 22 o superior** (el AI SDK v7 lo exige) y npm.
+
+```bash
+npm install
+cp .env.example .env.local   # y rellena las claves
+npm run dev                  # http://localhost:3000
+```
+
+Variables de entorno (ver `.env.example`):
+
+| Variable | Para qué | ¿Obligatoria? |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | Chat con OpenAI, imágenes, voz y búsqueda web por voz | Para esas funciones |
+| `ANTHROPIC_API_KEY` | Chat con Claude | Para Claude |
+| `DEFAULT_PROVIDER` | `anthropic` u `openai` | No (por defecto `anthropic`) |
+
+La búsqueda web del chat no necesita claves adicionales: la ejecuta el propio proveedor (Anthropic u OpenAI) con su herramienta nativa. En Anthropic, la búsqueda web debe estar habilitada en la [configuración de la organización](https://console.anthropic.com/settings/privacy). La búsqueda es de pago por uso en ambos proveedores.
+
+Si falta la clave del proveedor elegido, `/api/chat` responde un error JSON claro (`missing_api_key`) que la interfaz muestra al usuario. Las claves **solo** se leen en el servidor; nunca llegan al navegador.
+
+Otros comandos: `npm run build`, `npm run start`, `npm run lint`.
+
+## Cómo funciona la voz
+
+1. Al pulsar el micrófono, el navegador pide permiso para usar el micrófono.
+2. El navegador llama a `POST /api/realtime/session`. El servidor, con `OPENAI_API_KEY`, crea un **client secret efímero** (`POST https://api.openai.com/v1/realtime/client_secrets`, caduca en 10 minutos) con el modelo, la voz, las instrucciones en español, la detección de turnos del servidor (server VAD con `interrupt_response`), la transcripción de entrada y las herramientas. También se envía un resumen de la conversación de texto reciente como contexto.
+3. El navegador abre una conexión WebRTC (`RTCPeerConnection`) directamente con OpenAI (`POST https://api.openai.com/v1/realtime/calls` con el secreto efímero): envía el audio del micrófono (con cancelación de eco), reproduce el audio remoto y usa el canal de datos `oai-events` para los eventos.
+4. **Interrupciones:** el micrófono sigue abierto mientras Región habla. Si hablas encima, el servidor cancela la respuesta y vacía su búfer de audio, y la app silencia al instante la reproducción local (`input_audio_buffer.speech_started`). También puedes pulsar "Interrumpir" (`response.cancel` + `output_audio_buffer.clear`).
+5. **Herramientas:** en cuanto llegan los argumentos (`response.function_call_arguments.done`) la app ejecuta la herramienta —los artefactos en el navegador, sobre el mismo estado que el chat de texto; las imágenes en `POST /api/tools`; la búsqueda en `POST /api/web-search`— mientras Región sigue hablando. Al terminar la respuesta (`response.done`) envía cada resultado con `conversation.item.create` (`function_call_output`) y luego un `response.create` (salvo que estés hablando: tu turno ya generará la respuesta).
+6. **Búsqueda web por voz:** la Realtime API no tiene búsqueda integrada, así que la función `webSearch` llama a `/api/web-search`, que hace un `generateText` corto con `gpt-6-luna` + la herramienta nativa `web_search` de OpenAI y devuelve una respuesta breve y las URLs de las fuentes.
+
+Requisitos del navegador:
+
+- El micrófono solo funciona en un **contexto seguro**: `https://` o `http://localhost`. Si abres la app por IP de red local (`http://192.168…`) el navegador bloqueará el micrófono.
+- Concede el permiso de micrófono cuando el navegador lo pida. Si lo denegaste, vuelve a activarlo desde el icono del candado de la barra de direcciones.
+- Mientras la voz está activa, lo que escribas también se envía a la conversación de voz.
+- Para hablar sin auriculares, la app pide cancelación de eco al navegador; con altavoces muy altos el asistente puede "oírse" e interrumpirse. Si pasa, usa auriculares o baja el volumen.
+
+## Despliegue en Vercel
+
+1. Importa el repositorio en Vercel (framework: Next.js).
+2. En **Project Settings → Environment Variables** añade `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` y `DEFAULT_PROVIDER` (para Production y Preview). No hace falta ninguna clave de búsqueda.
+3. Despliega. Las rutas `/api/chat` y `/api/tools` declaran `maxDuration = 300` s (el máximo por defecto con Fluid Compute en todos los planes); `/api/web-search` usa 60 s y `/api/realtime/session` 30 s.
+
+> **Seguridad:** v1 no tiene autenticación ni límite de uso. Las rutas `/api/*` solo rechazan peticiones de otro origen, así que cualquiera con la URL puede consumir tus claves. Activa **Vercel Deployment Protection** (o añade autenticación) antes de compartir la URL.
+
+## Estructura
+
+- `src/app/api/chat/route.ts` — chat en streaming (`streamText` + herramientas).
+- `src/app/api/realtime/session/route.ts` — crea el secreto efímero para la voz.
+- `src/app/api/tools/route.ts` — genera imágenes para la voz (`generateImage`).
+- `src/app/api/web-search/route.ts` — búsqueda web para la voz (OpenAI + `web_search`).
+- `src/app/api/config/route.ts` — configuración pública (proveedor por defecto, claves disponibles sin revelarlas).
+- `src/lib/agent/` — configuración de modelos, prompts, esquemas de herramientas compartidos (texto y voz), artefactos, búsqueda web e imágenes.
+- `src/components/assistant/` — interfaz: chat, panel de artefactos, modo voz (orbe y controles) y hook de voz WebRTC.
+
+## Hoja de ruta
+
+- `runCode`: ejecutar código en un sandbox (Vercel Sandbox o E2B).
+- `saveFile`: guardar artefactos e imágenes en S3 (AWS).
+- `remember`: memoria a largo plazo e historial en Postgres (p. ej. con pgvector).
+- Autenticación y límites de uso por usuario.
+- Persistencia de conversaciones y artefactos.
+- Resaltado de sintaxis completo y ediciones parciales (diff) de artefactos.
+
+Los stubs están documentados en `src/lib/agent/roadmap.ts` (no están registrados como herramientas).
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
