@@ -98,8 +98,10 @@ export function AlmaTable() {
           })}
         </div>
         <p className="mt-6 max-w-sm text-[15px] leading-snug text-[#2f4a3c] sm:text-base">
-          Elige un objeto con el que te conectes y cuéntanos una historia de tu vida relacionada con ese objeto o
-          que te recuerde ese objeto.
+          <span className="font-bold">Cada herramienta tiene una historia.</span>
+          <br />
+          Observa los objetos que encontrarás sobre la mesa. Elige uno que te recuerde algo de tu vida y cuéntanos
+          tu historia.
         </p>
       </div>
     </AlmaShell>

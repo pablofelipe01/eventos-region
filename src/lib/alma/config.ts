@@ -19,7 +19,7 @@ export const OBJECTS = ["Machete", "Sombrero", "Botas", "Frutos"] as const;
 export type AlmaObject = (typeof OBJECTS)[number];
 
 export const TABLE_QUESTION =
-  "Elige un objeto con el que te conectes y cuéntanos una historia de tu vida relacionada con ese objeto o que te recuerde ese objeto.";
+  "Cada herramienta tiene una historia. Observa los objetos que encontrarás sobre la mesa. Elige uno que te recuerde algo de tu vida y cuéntanos tu historia.";
 
 export const RECORDING = {
   /** Segundos máximos por respuesta (Airtable admite adjuntos de hasta 5 MB por subida). */
