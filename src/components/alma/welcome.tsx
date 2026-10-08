@@ -1,6 +1,6 @@
+import Image from "next/image";
 import Link from "next/link";
 import { ArrowRightIcon, SproutIcon } from "./icons";
-import { Landscape } from "./landscape";
 import { almaFont } from "./theme";
 
 /** Pantalla 1 de Alma: bienvenida tras escanear el QR. */
@@ -10,10 +10,19 @@ export function AlmaWelcome({ nextHref }: { nextHref: string }) {
       className={`${almaFont.variable} relative isolate flex min-h-dvh flex-col items-center overflow-hidden bg-[#f7f3e8] text-[#1f4d36]`}
       style={{ fontFamily: "var(--font-alma), system-ui, sans-serif" }}
     >
-      {/* Cielo */}
+      {/* Paisaje ilustrado: el cielo (tercio superior) queda libre para el texto. */}
+      <Image
+        src="/alma/paisaje.webp"
+        alt=""
+        fill
+        priority
+        sizes="100vw"
+        className="-z-10 object-cover object-[50%_100%] md:object-[50%_35%]"
+      />
+      {/* Suaviza el cielo para que el texto se lea bien. */}
       <div
         aria-hidden
-        className="absolute inset-0 -z-10 bg-gradient-to-b from-[#dbe9ea] via-[#f1eedf] to-[#f7f3e8]"
+        className="absolute inset-x-0 top-0 -z-10 h-[55%] bg-gradient-to-b from-[#eef4f1]/85 via-[#eef4f1]/55 to-transparent md:h-[62%] md:from-[#eef4f1]/95 md:via-[#eef4f1]/75"
       />
 
       <div className="flex w-full min-w-0 max-w-md flex-1 flex-col items-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] text-center sm:max-w-lg">
@@ -38,9 +47,9 @@ export function AlmaWelcome({ nextHref }: { nextHref: string }) {
         </div>
       </div>
 
-      {/* Paisaje + botón */}
+      {/* Botón sobre el paisaje */}
       <div className="relative w-full">
-        <Landscape className="block h-[clamp(13rem,42vh,34rem)] w-full" />
+        <div className="h-[clamp(13rem,42vh,34rem)] w-full" aria-hidden />
         <div className="absolute inset-x-0 bottom-0 flex justify-center px-6 pb-[max(2rem,env(safe-area-inset-bottom))]">
           <Link
             href={nextHref}

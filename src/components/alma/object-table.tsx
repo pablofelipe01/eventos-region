@@ -114,20 +114,6 @@ export function ObjectTable({
           <Tabletop />
         </div>
       </div>
-
-      {/* Nombres */}
-      <div className="mt-1 grid grid-cols-4 gap-1 px-3 sm:gap-3 sm:px-4">
-        {OBJECTS.map((name) => (
-          <span
-            key={name}
-            className={`text-center text-[11px] font-bold transition-colors sm:text-xs ${
-              selected === name ? "text-[#1f4d36]" : "text-[#6b7f72]"
-            }`}
-          >
-            {name}
-          </span>
-        ))}
-      </div>
     </div>
   );
 }

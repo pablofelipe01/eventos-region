@@ -1,28 +1,17 @@
+import Image from "next/image";
 import { almaFont } from "./theme";
 
-/** Matas y colinas al pie de las pantallas interiores. */
+/** Colinas, cafetales y matas al pie de las pantallas interiores. */
 function Foliage() {
   return (
-    <svg
-      viewBox="0 0 400 120"
-      preserveAspectRatio="xMidYMax slice"
-      className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-28 w-full sm:h-40 lg:h-52"
+    <div
       aria-hidden
+      className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-[22vh] min-h-32 max-h-72 sm:h-[26vh] lg:h-[30vh]"
     >
-      <path d="M0 95 C80 70 160 80 230 88 C300 75 360 72 400 80 V120 H0Z" fill="#cfe0b8" />
-      <path d="M0 108 C90 92 190 98 260 104 C320 96 370 94 400 100 V120 H0Z" fill="#bdd3a1" />
-      {[
-        [12, 120, 1],
-        [388, 120, -1],
-      ].map(([x, y, dir], i) => (
-        <g key={i} transform={`translate(${x} ${y}) scale(${dir} 1)`}>
-          <path d="M0 0 C-4 -36 8 -62 26 -78 C20 -50 14 -22 0 0Z" fill="#3f6d2f" />
-          <path d="M8 0 C18 -26 36 -42 56 -48 C44 -28 26 -10 8 0Z" fill="#5a8d41" />
-          <path d="M-6 0 C-22 -20 -28 -40 -22 -58 C-10 -42 -2 -22 -6 0Z" fill="#4c7d37" />
-          <path d="M20 0 C30 -14 44 -22 60 -24 C50 -12 36 -4 20 0Z" fill="#6c9d4e" />
-        </g>
-      ))}
-    </svg>
+      {/* Fundido con el fondo crema para que no se note el borde superior. */}
+      <div className="absolute inset-x-0 top-0 z-10 h-10 bg-gradient-to-b from-[#f7f3e8] to-transparent" />
+      <Image src="/alma/pie.webp" alt="" fill sizes="100vw" className="object-cover object-top" />
+    </div>
   );
 }
 
