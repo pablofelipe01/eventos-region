@@ -8,7 +8,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RECORDING, type AlmaObject, type Station } from "@/lib/alma/config";
+import { ArrowRightIcon } from "./icons";
 import { getParticipantId } from "./participant";
+import { primaryButton } from "./shell";
 
 type Phase = "idle" | "recording" | "processing" | "done" | "error";
 
@@ -69,11 +71,20 @@ export function Recorder({
   station,
   question,
   object,
+  trigger,
+  onStart,
   onDone,
 }: {
   station: Station;
   question: string;
   object?: AlmaObject;
+  /**
+   * En vez del botón redondo de micrófono, el estado inicial es un botón de
+   * acción (p. ej. "¡Vamos!") que empieza a grabar al tocarlo.
+   */
+  trigger?: { label: string; disabled?: boolean };
+  /** Se llama cuando empieza la grabación. */
+  onStart?: () => void;
   /** Se llama cuando la respuesta quedó guardada (tras mostrar "¡Listo!"). */
   onDone: () => void;
 }) {
@@ -160,6 +171,7 @@ export function Recorder({
       setSeconds(0);
       recorder.start(1000);
       setPhase("recording");
+      onStart?.();
       timerRef.current = setInterval(() => {
         const elapsed = Math.round((Date.now() - startedAtRef.current) / 1000);
         setSeconds(elapsed);
@@ -175,7 +187,7 @@ export function Recorder({
       );
       setPhase("error");
     }
-  }, [stop, upload]);
+  }, [onStart, stop, upload]);
 
   if (phase === "processing" || phase === "done") {
     return (
@@ -222,6 +234,24 @@ export function Recorder({
     );
   }
 
+  const errorBox = phase === "error" && error && (
+    <p role="alert" className="max-w-xs rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
+      {error}
+    </p>
+  );
+
+  if (trigger) {
+    return (
+      <div className="flex w-full flex-col items-center gap-3">
+        <button type="button" onClick={start} disabled={trigger.disabled} className={primaryButton}>
+          {trigger.label}
+          <ArrowRightIcon className="size-5" />
+        </button>
+        {errorBox}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center gap-5">
       <button
@@ -238,11 +268,7 @@ export function Recorder({
         <br />
         tu respuesta
       </p>
-      {phase === "error" && error && (
-        <p role="alert" className="max-w-xs rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </p>
-      )}
+      {errorBox}
     </div>
   );
 }

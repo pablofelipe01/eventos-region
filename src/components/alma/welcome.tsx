@@ -21,7 +21,7 @@ export function AlmaWelcome({ nextHref }: { nextHref: string }) {
           AGENTICS
         </p>
 
-        <div className="flex flex-1 flex-col items-center justify-center py-6">
+        <div className="flex flex-1 flex-col items-center justify-center pt-[12vh] pb-4">
           <h1 className="text-[clamp(2.2rem,10vw,3.5rem)] leading-[1.1] font-extrabold tracking-tight">
             ¡Hola!
             <br />

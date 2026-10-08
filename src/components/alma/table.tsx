@@ -6,10 +6,10 @@
  */
 import { useState } from "react";
 import { OBJECTS, TABLE_QUESTION, type AlmaObject } from "@/lib/alma/config";
-import { ArrowRightIcon, SproutIcon } from "./icons";
+import { SproutIcon } from "./icons";
 import { Boots, Confetti, Fruits, Hat, Machete } from "./illustrations";
 import { Recorder } from "./recorder";
-import { AlmaShell, primaryButton } from "./shell";
+import { AlmaShell } from "./shell";
 
 const ICONS: Record<AlmaObject, (p: { className?: string }) => React.ReactNode> = {
   Machete,
@@ -20,9 +20,10 @@ const ICONS: Record<AlmaObject, (p: { className?: string }) => React.ReactNode> 
 
 export function AlmaTable() {
   const [selected, setSelected] = useState<AlmaObject | null>(null);
-  const [phase, setPhase] = useState<"pick" | "record" | "done">("pick");
+  const [done, setDone] = useState(false);
+  const [recording, setRecording] = useState(false);
 
-  if (phase === "done") {
+  if (done) {
     return (
       <AlmaShell>
         <div className="relative flex w-full flex-1 flex-col items-center justify-center">
@@ -37,39 +38,18 @@ export function AlmaTable() {
     );
   }
 
-  if (phase === "record" && selected) {
-    const Icon = ICONS[selected];
-    return (
-      <AlmaShell step={2}>
-        <div className="flex w-full flex-1 flex-col items-center justify-center">
-          <div className="grid size-20 place-items-center rounded-2xl bg-white shadow-sm">
-            <Icon className="size-14" />
-          </div>
-          <h1 className="mt-4 text-[clamp(1.5rem,6vw,2rem)] leading-tight font-extrabold">{selected}</h1>
-          <p className="mt-3 max-w-xs text-[15px] leading-snug text-[#2f4a3c]">
-            Cuéntanos una historia de tu vida relacionada con este objeto o que te lo recuerde.
-          </p>
-          <div className="mt-10 w-full">
-            <Recorder
-              station="Mesa de las herramientas"
-              question={TABLE_QUESTION}
-              object={selected}
-              onDone={() => setPhase("done")}
-            />
-          </div>
-        </div>
-      </AlmaShell>
-    );
-  }
-
   return (
     <AlmaShell
       step={2}
       bottom={
-        <button type="button" disabled={!selected} onClick={() => setPhase("record")} className={primaryButton}>
-          ¡Vamos!
-          <ArrowRightIcon className="size-5" />
-        </button>
+        <Recorder
+          station="Mesa de las herramientas"
+          question={TABLE_QUESTION}
+          object={selected ?? undefined}
+          trigger={{ label: "¡Vamos!", disabled: !selected }}
+          onStart={() => setRecording(true)}
+          onDone={() => setDone(true)}
+        />
       }
     >
       <div className="flex w-full flex-1 flex-col items-center justify-center">
@@ -86,10 +66,11 @@ export function AlmaTable() {
                 type="button"
                 role="radio"
                 aria-checked={active}
+                disabled={recording}
                 onClick={() => setSelected(name)}
-                className={`flex aspect-square min-w-0 flex-col items-center justify-center gap-1 rounded-xl border-2 bg-white p-1 shadow-sm transition active:scale-95 sm:p-2 ${
+                className={`flex aspect-square min-w-0 flex-col items-center justify-center gap-1 rounded-xl border-2 bg-white p-1 shadow-sm transition active:scale-95 disabled:active:scale-100 sm:p-2 ${
                   active ? "border-[#1f4d36] ring-2 ring-[#1f4d36]/20" : "border-transparent"
-                }`}
+                } ${recording && !active ? "opacity-40" : ""}`}
               >
                 <Icon className="size-10 sm:size-14" />
                 <span className="text-[10px] font-semibold sm:text-xs">{name}</span>
