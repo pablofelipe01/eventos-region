@@ -30,7 +30,8 @@ export function createNativeWebSearchTool(provider: ProviderId) {
       // Versión recomendada por @ai-sdk/anthropic (filtrado dinámico de resultados).
       return anthropic.tools.webSearch_20260318({
         maxUses: WEB_SEARCH.anthropicMaxUses,
-        userLocation: WEB_SEARCH.userLocation,
+        // Anthropic no acepta el código de país CO: solo se envía la zona horaria.
+        userLocation: { type: "approximate", timezone: WEB_SEARCH.userLocation.timezone },
         responseInclusion: "excluded",
       });
     case "openai":
